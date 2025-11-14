@@ -18,8 +18,11 @@ interface Template {
 	description: string;
 	category: string;
 	rules: string;
+	marketRules: string;
 	imageUrl?: string;
 	tags: string[];
+	resolutionType: "ai" | "code";
+	aiPrompt?: string;
 }
 
 interface FormState {
@@ -41,29 +44,38 @@ const templates: Template[] = [
 	{
 		id: "market-cap",
 		title: "Largest Company by Market Cap",
-		description: "Which company will have the largest market capitalization?",
+		description: "Which company will have the largest market capitalization by December 31, 2025?",
 		category: "Business",
 		rules: "Resolved by market cap at deadline",
+		marketRules: "This market will be resolved based on the publicly traded company with the highest market capitalization at the deadline. Market cap will be determined by the closing stock price multiplied by the number of outstanding shares on the resolution date. Data will be sourced from reliable financial data providers such as Yahoo Finance, Bloomberg, or Reuters.",
 		imageUrl: "https://example.com/market-cap.jpg",
-		tags: ["stocks", "market-cap", "companies"]
+		tags: ["stocks", "market-cap", "companies"],
+		resolutionType: "ai",
+		aiPrompt: "Check the market capitalization of the top 10 publicly traded companies (Apple, Microsoft, Google/Alphabet, Amazon, Tesla, etc.) using reliable financial data sources. Compare their market caps and determine which company has the highest market capitalization at the deadline. Resolve to the company with the largest market cap."
 	},
 	{
 		id: "sui-price",
 		title: "Sui Price Range",
-		description: "What will be the price range of Sui (SUI)?",
+		description: "Will Sui (SUI) be trading above $2.50 by the deadline?",
 		category: "Crypto",
 		rules: "Resolved by SUI price at deadline",
+		marketRules: "This market will resolve as YES if the price of Sui (SUI) is above $2.50 at the deadline, and NO if it is $2.50 or below. The price will be determined using the closing price from major cryptocurrency exchanges such as Binance, Coinbase, or CoinGecko's aggregated price at the resolution time.",
 		imageUrl: "https://example.com/sui.jpg",
-		tags: ["sui", "crypto", "price"]
+		tags: ["sui", "crypto", "price"],
+		resolutionType: "ai",
+		aiPrompt: "Check the current price of Sui (SUI) cryptocurrency from reliable sources like CoinGecko, CoinMarketCap, or major exchanges (Binance, Coinbase). If the price is above $2.50, resolve as YES. If the price is $2.50 or below, resolve as NO."
 	},
 	{
 		id: "premier-league",
 		title: "Premier League Match",
-		description: "Who will win the Premier League match: Tottenham vs Manchester United?",
+		description: "Who will win the next Tottenham vs Manchester United match?",
 		category: "Sports",
 		rules: "Resolved by official match result",
+		marketRules: "This market will be resolved based on the official result of the next Premier League match between Tottenham Hotspur and Manchester United. The result will be determined by the final score after 90 minutes plus injury time (regular time only, not including extra time or penalties). Options: Tottenham Win, Manchester United Win, or Draw.",
 		imageUrl: "https://example.com/premier-league.jpg",
-		tags: ["football", "premier-league", "tottenham", "manchester-united"]
+		tags: ["football", "premier-league", "tottenham", "manchester-united"],
+		resolutionType: "ai",
+		aiPrompt: "Check the official result of the most recent Premier League match between Tottenham Hotspur and Manchester United from reliable sports sources like BBC Sport, Sky Sports, or the official Premier League website. Determine the winner based on the final score after 90 minutes plus injury time. Resolve accordingly: Tottenham Win, Manchester United Win, or Draw."
 	}
 ];
 
@@ -94,14 +106,25 @@ export function CreateWizard() {
 	};
 
 	const selectTemplate = (template: Template) => {
+		// Calculate date exactly 1 day later
+		const tomorrow = new Date();
+		tomorrow.setDate(tomorrow.getDate() + 1);
+		const endDate = tomorrow.toISOString().split('T')[0] || tomorrow.toLocaleDateString('en-CA'); // Format as YYYY-MM-DD
+		const endTime = "23:59"; // Set to end of day
+		
 		setForm({
 			...form,
 			selectedTemplate: template,
 			name: template.description,
 			rules: template.rules,
+			marketRules: template.marketRules,
 			category: template.category,
 			tags: template.tags.join(", "),
 			imageUrl: template.imageUrl || "",
+			endDate,
+			endTime,
+			resolutionType: template.resolutionType,
+			aiPrompt: template.aiPrompt || "",
 		});
 		next();
 	};
