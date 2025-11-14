@@ -4,12 +4,11 @@ import { CreateWizard } from "@/components/create_wpg"
 
 export default function Page() {
   return (
-    <main className="min-h-svh">
+    <main className="min-h-screen">
       <Navbar />
-      <div className="mx-auto grid max-w-7xl gap-6 pt-6">
+      <div className="container mx-auto px-4 pt-6">
         <CreateWizard />
       </div>
-
     </main>
   )
 }
