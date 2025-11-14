@@ -1,0 +1,543 @@
+"use client";
+
+import React, { useState } from "react";
+import { Card } from "@workspace/ui/components/card";
+import { Button } from "@workspace/ui/components/button";
+import { Input } from "@workspace/ui/components/input";
+import { Label } from "@workspace/ui/components/label";
+import { Textarea } from "@workspace/ui/components/textarea";
+import { WalrusCodeUploader } from "./walrus/walrus-code-uploader";
+import type { WalrusUploadResult } from "@/lib/walrus/uploadToWalrus";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+
+type Step = 0 | 1 | 2 | 3 | 4;
+
+interface Template {
+	id: string;
+	title: string;
+	description: string;
+	category: string;
+	rules: string;
+	imageUrl?: string;
+	tags: string[];
+}
+
+interface FormState {
+	selectedTemplate?: Template;
+	name: string;
+	rules: string;
+	marketRules: string;
+	imageUrl: string;
+	category: string;
+	tags: string;
+	endDate: string;
+	endTime: string;
+	resolutionType: "ai" | "code" | "";
+	aiPrompt: string;
+	codeUploadResult: WalrusUploadResult | null;
+}
+
+const templates: Template[] = [
+	{
+		id: "market-cap",
+		title: "Largest Company by Market Cap",
+		description: "Which company will have the largest market capitalization?",
+		category: "Business",
+		rules: "Resolved by market cap at deadline",
+		imageUrl: "https://example.com/market-cap.jpg",
+		tags: ["stocks", "market-cap", "companies"]
+	},
+	{
+		id: "sui-price",
+		title: "Sui Price Range",
+		description: "What will be the price range of Sui (SUI)?",
+		category: "Crypto",
+		rules: "Resolved by SUI price at deadline",
+		imageUrl: "https://example.com/sui.jpg",
+		tags: ["sui", "crypto", "price"]
+	},
+	{
+		id: "premier-league",
+		title: "Premier League Match",
+		description: "Who will win the Premier League match: Tottenham vs Manchester United?",
+		category: "Sports",
+		rules: "Resolved by official match result",
+		imageUrl: "https://example.com/premier-league.jpg",
+		tags: ["football", "premier-league", "tottenham", "manchester-united"]
+	}
+];
+
+const initialState: FormState = {
+	name: "",
+	rules: "",
+	marketRules: "",
+	imageUrl: "",
+	category: "",
+	tags: "",
+	endDate: "",
+	endTime: "",
+	resolutionType: "",
+	aiPrompt: "",
+	codeUploadResult: null,
+};
+
+export function CreateWizard() {
+	const [step, setStep] = useState<Step>(0);
+	const [form, setForm] = useState<FormState>(initialState);
+	const [submitting, setSubmitting] = useState(false);
+
+	const next = () => setStep((s) => (s < 4 ? ((s + 1) as Step) : s));
+	const prev = () => setStep((s) => (s > 0 ? ((s - 1) as Step) : s));
+
+	const update = (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+		setForm((f) => ({ ...f, [field]: e.target.value }));
+	};
+
+	const selectTemplate = (template: Template) => {
+		setForm({
+			...form,
+			selectedTemplate: template,
+			name: template.description,
+			rules: template.rules,
+			category: template.category,
+			tags: template.tags.join(", "),
+			imageUrl: template.imageUrl || "",
+		});
+		next();
+	};
+
+	const createFromScratch = () => {
+		setForm({ ...form, selectedTemplate: undefined });
+		next();
+	};
+
+	const selectResolutionType = (type: "ai" | "code" | "") => {
+		setForm({ ...form, resolutionType: type });
+		
+	};
+
+	const handleWalrusUpload = (result: WalrusUploadResult) => {
+		setForm({ ...form, codeUploadResult: result });
+	};
+
+	const canProceed = (() => {
+		if (step === 0) return false; // Templates page handles navigation
+		if (step === 1) return form.name.trim().length > 0 && form.rules.trim().length > 0;
+		if (step === 2) return form.category.trim().length > 0 && form.endDate.trim().length > 0;
+		if (step === 3) return form.resolutionType !== "";
+		return true;
+	})();
+
+	const onSubmit = async () => {
+		setSubmitting(true);
+		// Mock submit
+		await new Promise((r) => setTimeout(r, 800));
+		console.log("Submitted payload", form);
+		setSubmitting(false);
+	};
+
+	return (
+		<div className="w-full flex justify-center">
+			<Card className="w-3/4 p-6 space-y-6">
+				<Stepper step={step} />
+				{step === 0 && <TemplatesPage onSelectTemplate={selectTemplate} onCreateFromScratch={createFromScratch} />}
+				{step === 1 && <MarketDetailsPage form={form} update={update} />}
+				{step === 2 && <CategoryAndEndDatePage form={form} update={update} />}
+				{step === 3 && <ResolutionTypePage form={form} onSelectType={selectResolutionType} onWalrusUpload={handleWalrusUpload} update={update} />}
+				{step === 4 && <ReviewPage form={form} />}
+				<div className="flex justify-between pt-2">
+					<Button variant="outline" onClick={prev} disabled={step === 0 || submitting}>
+						{step === 1 ? "Previous" : "Back"}
+					</Button>
+					{step > 0 && step < 4 && (
+						<Button onClick={next} disabled={!canProceed}>
+							{step === 3 ? "Review" : "Next"}
+						</Button>
+					)}
+					{step === 4 && (
+						<Button onClick={onSubmit} disabled={submitting}>
+							{submitting ? "Creating..." : "Create Market"}
+						</Button>
+					)}
+					{step === 0 && <div></div> /* Spacer */}
+				</div>
+			</Card>
+		</div>
+	);
+}
+
+// Template Selection Page
+function TemplatesPage({ 
+	onSelectTemplate, 
+	onCreateFromScratch 
+}: { 
+	onSelectTemplate: (template: Template) => void;
+	onCreateFromScratch: () => void;
+}) {
+	return (
+		<div className="space-y-6">
+			<div className="text-center space-y-2">
+				<h2 className="text-2xl font-bold">Templates</h2>
+				<p className="text-muted-foreground">Start with a pre-filled template or create from scratch</p>
+			</div>
+			
+			<div className="grid gap-4">
+				{templates.map((template) => (
+					<Card 
+						key={template.id}
+						className="p-4 cursor-pointer hover:bg-accent transition-colors"
+						onClick={() => onSelectTemplate(template)}
+					>
+						<div className="space-y-2">
+							<h3 className="font-semibold text-lg">{template.title}</h3>
+							<p className="text-muted-foreground">{template.description}</p>
+							<div className="flex gap-2">
+								<span className="text-xs bg-secondary px-2 py-1 rounded-full">{template.category}</span>
+								{template.tags.slice(0, 2).map(tag => (
+									<span key={tag} className="text-xs bg-secondary px-2 py-1 rounded-full">{tag}</span>
+								))}
+							</div>
+						</div>
+					</Card>
+				))}
+			</div>
+
+			<div className="text-center">
+				<Button variant="outline" onClick={onCreateFromScratch}>
+					Create from scratch
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+// Market Details Page
+function MarketDetailsPage({ 
+	form, 
+	update 
+}: { 
+	form: FormState;
+	update: (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}) {
+	return (
+		<div className="space-y-6">
+			<div className="space-y-4">
+				<div className="space-y-2">
+					<Label htmlFor="name">Market Name</Label>
+					<p className="text-sm text-muted-foreground">Provide a concise, descriptive market name</p>
+					<Input 
+						id="name" 
+						placeholder="Will Bitcoin reach $100,000 by December 31, 2025?" 
+						value={form.name} 
+						onChange={update("name")} 
+					/>
+				</div>
+				
+				<div className="space-y-2">
+					<Label htmlFor="rules">Rules (short)</Label>
+					<p className="text-sm text-muted-foreground">Short resolution summary (required)</p>
+					<Input 
+						id="rules" 
+						placeholder="Market Rules" 
+						value={form.rules} 
+						onChange={update("rules")} 
+					/>
+				</div>
+				
+				<div className="space-y-2">
+					<Label htmlFor="marketRules">Market Rules</Label>
+					<p className="text-sm text-muted-foreground">Short resolution summary, e.g., Resolved by BTC price at deadline</p>
+					<Textarea 
+						id="marketRules" 
+						placeholder="Enter detailed market rules..."
+						value={form.marketRules} 
+						onChange={update("marketRules")} 
+					/>
+				</div>
+				
+				<div className="space-y-2">
+					<Label htmlFor="imageUrl">Image URL</Label>
+					<p className="text-sm text-muted-foreground">Optional cover image for the market</p>
+					<Input 
+						id="imageUrl" 
+						placeholder="https://..." 
+						value={form.imageUrl} 
+						onChange={update("imageUrl")} 
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+// Category and End Date Page
+function CategoryAndEndDatePage({ 
+	form, 
+	update 
+}: { 
+	form: FormState;
+	update: (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}) {
+	return (
+		<div className="space-y-6">
+			<div className="space-y-4">
+				<div className="space-y-2">
+					<Label>Category & Tags</Label>
+					<p className="text-sm text-muted-foreground">Categorize and tag for discovery</p>
+					
+					<div className="space-y-2">
+						<Label htmlFor="category">Category</Label>
+						<Input 
+							id="category" 
+							placeholder="e.g., Crypto" 
+							value={form.category} 
+							onChange={update("category")} 
+						/>
+					</div>
+					
+					<div className="space-y-2">
+						<Label htmlFor="tags">Tags (comma-separated)</Label>
+						<Input 
+							id="tags" 
+							placeholder="bitcoin, price, 2025" 
+							value={form.tags} 
+							onChange={update("tags")} 
+						/>
+					</div>
+				</div>
+				
+				<div className="space-y-2">
+					<Label>End Date</Label>
+					<p className="text-sm text-muted-foreground">Choose an end date in the future</p>
+					
+					<div className="grid grid-cols-2 gap-4">
+						<div className="space-y-2">
+							<Label htmlFor="endDate">End Date</Label>
+							<Input 
+								id="endDate" 
+								type="date"
+								value={form.endDate} 
+								onChange={update("endDate")} 
+							/>
+						</div>
+						
+						<div className="space-y-2">
+							<Label htmlFor="endTime">End Time</Label>
+							<Input 
+								id="endTime" 
+								type="time"
+								value={form.endTime} 
+								onChange={update("endTime")} 
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+// Resolution Type Page
+function ResolutionTypePage({ 
+	form, 
+	onSelectType,
+	onWalrusUpload,
+	update 
+}: { 
+	form: FormState;
+	onSelectType: (type: "ai" | "code" | "") => void;
+	onWalrusUpload: (result: WalrusUploadResult) => void;
+	update?: (field: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}) {
+    const curacc = useCurrentAccount()?.address;
+	if (form.resolutionType === "") {
+		return (
+			<div className="space-y-6">
+				<div className="text-center space-y-2">
+					<h2 className="text-2xl font-bold">Resolution Method</h2>
+					<p className="text-muted-foreground">Choose how your market will be resolved</p>
+				</div>
+				
+				<div className="grid gap-4">
+					<Card 
+						className="p-6 cursor-pointer hover:bg-accent transition-colors"
+						onClick={() => onSelectType("ai")}
+					>
+						<div className="space-y-2">
+							<h3 className="font-semibold text-lg">AI Resolution</h3>
+							<p className="text-muted-foreground">Use AI to resolve the market based on your custom prompt</p>
+							<div className="flex gap-2">
+								<span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Automated</span>
+								<span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">AI-Powered</span>
+							</div>
+						</div>
+					</Card>
+					
+					<Card 
+						className="p-6 cursor-pointer hover:bg-accent transition-colors"
+						onClick={() => onSelectType("code")}
+					>
+						<div className="space-y-2">
+							<h3 className="font-semibold text-lg">Code Resolution</h3>
+							<p className="text-muted-foreground">Upload custom code to Walrus for programmatic resolution</p>
+							<div className="flex gap-2">
+								<span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Custom Code</span>
+								<span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">Walrus Storage</span>
+							</div>
+						</div>
+					</Card>
+				</div>
+			</div>
+		);
+	}
+
+	if (form.resolutionType === "ai") {
+		return (
+            
+			<div className="space-y-6">
+				<div className="space-y-2">
+					<h2 className="text-2xl font-bold">AI Resolution Setup</h2>
+					<p className="text-muted-foreground">Configure how AI should resolve your market</p>
+					<Button variant="outline" size="sm" onClick={() => onSelectType("")}>
+						Change Resolution Type
+					</Button>
+				</div>
+				
+				<div className="space-y-4">
+					<div className="space-y-2">
+						<Label htmlFor="aiPrompt">Resolution Prompt</Label>
+						<p className="text-sm text-muted-foreground">
+							Enter a detailed prompt that explains how the AI should evaluate and resolve this market
+						</p>
+						<Textarea 
+							id="aiPrompt" 
+							placeholder="Example: Check the official BTC price on CoinGecko at the deadline. If BTC price is $100,000 or higher, resolve as YES. Otherwise, resolve as NO."
+							value={form.aiPrompt} 
+							onChange={update?.("aiPrompt")} 
+							rows={6}
+						/>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	if (form.resolutionType === "code") {
+		return (
+			<div className="space-y-6">
+				<div className="space-y-2">
+					<h2 className="text-2xl font-bold">Code Resolution Setup</h2>
+					<p className="text-muted-foreground">Upload your resolution code to Walrus</p>
+					<Button variant="outline" size="sm" onClick={() => onSelectType("")}>
+						Change Resolution Type
+					</Button>
+				</div>
+				
+				<WalrusCodeUploader 
+					signer={curacc || null} // TODO: Get actual signer from context
+					defaultFilename="resolution.ts"
+					onUploaded={onWalrusUpload}
+				/>
+				
+				{form.codeUploadResult && (
+					<div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+						<p className="text-sm text-green-800">
+							✅ Code uploaded successfully! Blob ID: {form.codeUploadResult.blobId}
+						</p>
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	return null;
+}
+
+// Review Page
+function ReviewPage({ form }: { form: FormState }) {
+	return (
+		<div className="space-y-6">
+			<div className="space-y-2">
+				<h3 className="text-xl font-semibold">Review Your Market</h3>
+				<p className="text-muted-foreground">Please review all details before creating your market</p>
+			</div>
+			
+			<div className="space-y-4 text-sm">
+				{form.selectedTemplate && (
+					<div>
+						<span className="font-semibold">Template:</span> {form.selectedTemplate.title}
+					</div>
+				)}
+				<div>
+					<span className="font-semibold">Market Name:</span> {form.name || "—"}
+				</div>
+				<div>
+					<span className="font-semibold">Rules:</span> {form.rules || "—"}
+				</div>
+				{form.marketRules && (
+					<div>
+						<span className="font-semibold">Market Rules:</span> {form.marketRules}
+					</div>
+				)}
+				<div>
+					<span className="font-semibold">Category:</span> {form.category || "—"}
+				</div>
+				<div>
+					<span className="font-semibold">Tags:</span> {form.tags || "—"}
+				</div>
+				{form.imageUrl && (
+					<div>
+						<span className="font-semibold">Image URL:</span> {form.imageUrl}
+					</div>
+				)}
+				<div>
+					<span className="font-semibold">End Date:</span> {form.endDate || "—"} {form.endTime && `at ${form.endTime}`}
+				</div>
+				<div>
+					<span className="font-semibold">Resolution Type:</span> {form.resolutionType === "ai" ? "AI Resolution" : form.resolutionType === "code" ? "Code Resolution" : "—"}
+				</div>
+				{form.resolutionType === "ai" && form.aiPrompt && (
+					<div>
+						<span className="font-semibold">AI Prompt:</span> {form.aiPrompt}
+					</div>
+				)}
+				{form.resolutionType === "code" && form.codeUploadResult && (
+					<div>
+						<span className="font-semibold">Code Blob ID:</span> {form.codeUploadResult.blobId}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function Stepper({ step }: { step: Step }) {
+	const steps = ["Templates", "Market Details", "Category & Date", "Resolution", "Review"];
+	return (
+		<ol className="flex items-center justify-between text-sm">
+			{steps.map((label, i) => {
+				const active = i === step;
+				const complete = i < step;
+				return (
+					<li key={label} className="flex-1 flex flex-col items-center">
+						<div
+							className={
+								"h-8 w-8 flex items-center justify-center rounded-full border text-xs font-medium " +
+								(active
+									? "bg-primary text-primary-foreground border-primary"
+									: complete
+									? "bg-green-500 text-white border-green-500"
+									: "bg-muted text-foreground/60 border-border")
+							}
+						>
+							{i + 1}
+						</div>
+						<span className={"mt-1 " + (active ? "font-semibold" : "text-muted-foreground")}>{label}</span>
+					</li>
+				);
+			})}
+		</ol>
+	);
+}
+
+export default CreateWizard;

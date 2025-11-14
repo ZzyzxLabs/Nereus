@@ -1,5 +1,6 @@
 "use client"
 import { Button } from "@workspace/ui/components/button"
+import Link from "next/link"
 import { Separator } from "@workspace/ui/components/separator"
 import { NereusLogo } from "./branding"
 import { SearchInput } from "./search-input"
@@ -17,6 +18,9 @@ export function Navbar() {
         <div className="hidden items-center gap-2 sm:flex">
           <Button variant="ghost" size="sm">Leaderboard</Button>
           <Button variant="ghost" size="sm">Referral</Button>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/create">Create</Link>
+          </Button>
           <ConnectButton />
         </div>
       </div>
