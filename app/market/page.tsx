@@ -1,210 +1,51 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import Navbar from "../../components/navbar";
 import MarketChart from "../../components/market-chart";
 import MarketOutcome from "../../components/market-outcome";
 import TradingPanel from "../../components/trading-panel";
-import { MarketData } from "../../types/market-types";
 import { useUiStore } from "../../stores/ui-store";
+import type { MarketData } from "../../types/market-types";
 import { getCategoryIcon } from "../../lib/category";
-
-// Market data repository
-const marketDataRepo: Record<string, MarketData> = {
-    "fed-december-2025": {
-        id: "fed-december-2025",
-        title: "Fed Decision in December 2025?",
-        description: "What will the Federal Reserve decide regarding interest rates in December 2025?",
-        category: "Economics",
-        status: "active",
-        endDate: "2025-12-31T23:59:59Z",
-        totalVolume: 150000,
-        totalLiquidity: 75000,
-        outcomes: [
-            {
-                id: "50bps-decrease",
-                outcome: "50+ bps decrease",
-                percentage: 2,
-                volume: 9066,
-                change: 2,
-                yesPrice: 2.5,
-                noPrice: 97.6
-            },
-            {
-                id: "25bps-decrease",
-                outcome: "25 bps decrease", 
-                percentage: 71,
-                volume: 6356,
-                change: -2,
-                yesPrice: 71,
-                noPrice: 30
-            },
-            {
-                id: "no-change",
-                outcome: "No change",
-                percentage: 27, 
-                volume: 5098,
-                change: 2,
-                yesPrice: 27,
-                noPrice: 74
-            },
-            {
-                id: "25bps-increase",
-                outcome: "25+ bps increase",
-                percentage: 1,
-                volume: 47035,
-                change: 0,
-                yesPrice: 0.6,
-                noPrice: 99.5
-            }
-        ],
-        tags: ["fed", "interest-rates", "economics"],
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: new Date().toISOString()
-    },
-    "trump-2024-election": {
-        id: "trump-2024-election", 
-        title: "Trump Re-election 2024?",
-        description: "Will Donald Trump win the 2024 presidential election?",
-        category: "Politics",
-        status: "active",
-        endDate: "2024-11-05T23:59:59Z",
-        totalVolume: 2500000,
-        totalLiquidity: 1200000,
-        outcomes: [
-            {
-                id: "trump-wins",
-                outcome: "Trump Wins",
-                percentage: 45,
-                volume: 1250000,
-                change: -2.1,
-                yesPrice: 45,
-                noPrice: 55
-            },
-            {
-                id: "trump-loses",
-                outcome: "Trump Loses", 
-                percentage: 55,
-                volume: 1250000,
-                change: 2.1,
-                yesPrice: 55,
-                noPrice: 45
-            }
-        ],
-        tags: ["politics", "election", "trump"],
-        createdAt: "2024-01-01T00:00:00Z",
-        updatedAt: new Date().toISOString()
-    },
-    "btc-100k": {
-        id: "btc-100k",
-        title: "Bitcoin $100K by End of Year?", 
-        description: "Will Bitcoin reach $100,000 by December 31, 2025?",
-        category: "Cryptocurrency",
-        status: "active",
-        endDate: "2025-12-31T23:59:59Z",
-        totalVolume: 890000,
-        totalLiquidity: 445000,
-        outcomes: [
-            {
-                id: "btc-reaches-100k",
-                outcome: "Yes, BTC hits $100K",
-                percentage: 23,
-                volume: 445000,
-                change: 8.7,
-                yesPrice: 23,
-                noPrice: 77
-            },
-            {
-                id: "btc-stays-below-100k",
-                outcome: "No, stays below $100K",
-                percentage: 77,
-                volume: 445000,
-                change: -8.7,
-                yesPrice: 77,
-                noPrice: 23
-            }
-        ],
-        tags: ["bitcoin", "cryptocurrency", "price"],
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: new Date().toISOString()
-    },
-    "ai-agi-2025": {
-        id: "ai-agi-2025",
-        title: "AGI Achieved by End of 2025?",
-        description: "Will Artificial General Intelligence be achieved by December 31, 2025?", 
-        category: "Technology",
-        status: "active",
-        endDate: "2025-12-31T23:59:59Z",
-        totalVolume: 567000,
-        totalLiquidity: 283500,
-        outcomes: [
-            {
-                id: "agi-achieved",
-                outcome: "AGI Achieved",
-                percentage: 12,
-                volume: 283500,
-                change: 12.3,
-                yesPrice: 12,
-                noPrice: 88
-            },
-            {
-                id: "agi-not-achieved",
-                outcome: "AGI Not Achieved",
-                percentage: 88,
-                volume: 283500,
-                change: -12.3,
-                yesPrice: 88,
-                noPrice: 12
-            }
-        ],
-        tags: ["ai", "agi", "technology"],
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: new Date().toISOString()
-    }
-};
+import { DEFAULT_MARKET_ID } from "../data/mock-markets";
 
 export default function MarketPage() {
     const searchParams = useSearchParams();
-    const marketId = searchParams.get('id') || 'fed-december-2025';
-    
-    const [marketData, setMarketData] = useState<MarketData | null>(null);
-    const setStoreMarket = useUiStore((s) => s.setMarket);
-    const [loading, setLoading] = useState(true);
+    const marketId = searchParams.get("id") || DEFAULT_MARKET_ID;
+
+    const { market, marketLoading, loadMarket } = useUiStore((state) => ({
+        market: state.market,
+        marketLoading: state.marketLoading,
+        loadMarket: state.loadMarket
+    }));
 
     useEffect(() => {
-        // Simulate API fetch
-        const fetchMarketData = async () => {
-            setLoading(true);
-            
-            // Simulate network delay
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-            const data = marketDataRepo[marketId];
-            if (data) {
-                setMarketData(data);
-            } else {
-                // Fallback to default market
-                setMarketData(marketDataRepo["fed-december-2025"]);
-            }
-            
-            setLoading(false);
-        };
+        if (!marketId) {
+            return;
+        }
 
-        fetchMarketData();
-    }, [marketId]);
+        if (market?.id === marketId) {
+            return;
+        }
 
-    // Sync local market to global UI store
-    useEffect(() => {
-        setStoreMarket(marketData ?? null);
-    }, [marketData, setStoreMarket]);
+        void loadMarket(marketId);
+    }, [marketId, market?.id, loadMarket]);
+
+    const marketData: MarketData | null = useMemo(() => {
+        if (market?.id === marketId) {
+            return market;
+        }
+        return null;
+    }, [market, marketId]);
 
     const handleTrade = (amount: number) => {
         console.log("Trade executed:", amount, "for market:", marketId);
         // Future API integration point
     };
 
-    if (loading) {
+    if (marketLoading && !marketData) {
         return (
             <div className="min-h-screen">
                 <Navbar />

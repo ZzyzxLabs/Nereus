@@ -1,18 +1,28 @@
-import { 
-    MarketData, 
-    ChartDataPoint, 
-    NewsItem, 
-    TradingOrder, 
+import {
+    MarketData,
+    ChartDataPoint,
+    NewsItem,
+    TradingOrder,
     UserPosition,
     ApiResponse,
     PaginatedResponse,
     MarketFilters,
     MarketApiService,
     TradingApiService
-} from '../types/market-types';
+} from "../types/market-types";
+import {
+    DEFAULT_MARKET_ID,
+    mockMarketCharts,
+    mockMarketMap,
+    mockMarketNews,
+    mockMarkets
+} from "../app/data/mock-markets";
 
 // Base API configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 class BaseApiService {
     protected async request<T>(
@@ -35,7 +45,7 @@ class BaseApiService {
             const data = await response.json();
             return { success: true, data };
         } catch (error) {
-            console.error('API request failed:', error);
+            console.error("API request failed:", error);
             return { 
                 success: false, 
                 error: error instanceof Error ? error.message : 'Unknown error' 
@@ -68,7 +78,7 @@ export class MarketService extends BaseApiService implements MarketApiService {
             const data = await response.json();
             return data;
         } catch (error) {
-            console.error('Failed to fetch markets:', error);
+            console.error("Failed to fetch markets:", error);
             return {
                 success: false,
                 data: [],
@@ -114,100 +124,75 @@ export class TradingService extends BaseApiService implements TradingApiService 
 export class MockApiService implements MarketApiService, TradingApiService {
     async getMarket(id: string): Promise<ApiResponse<MarketData>> {
         // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const mockMarket: MarketData = {
-            id,
-            title: "Fed decision in December?",
-            description: "What will the Federal Reserve decide regarding interest rates in December?",
-            category: "Economics",
-            status: "active",
-            endDate: "2025-12-31T23:59:59Z",
-            totalVolume: 150000,
-            totalLiquidity: 75000,
-            outcomes: [
-                {
-                    id: "50bps-decrease",
-                    outcome: "50+ bps decrease",
-                    percentage: 2,
-                    volume: 9066,
-                    change: 2,
-                    yesPrice: 2.5,
-                    noPrice: 97.6
-                },
-                {
-                    id: "25bps-decrease",
-                    outcome: "25 bps decrease", 
-                    percentage: 71,
-                    volume: 6356,
-                    change: -2,
-                    yesPrice: 71,
-                    noPrice: 30
-                },
-                {
-                    id: "no-change",
-                    outcome: "No change",
-                    percentage: 27, 
-                    volume: 5098,
-                    change: 2,
-                    yesPrice: 27,
-                    noPrice: 74
-                },
-                {
-                    id: "25bps-increase",
-                    outcome: "25+ bps increase",
-                    percentage: 1,
-                    volume: 47035,
-                    change: 0,
-                    yesPrice: 0.6,
-                    noPrice: 99.5
-                }
-            ],
-            tags: ["fed", "interest-rates", "economics"],
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: new Date().toISOString()
-        };
+        await delay(250);
 
-        return { success: true, data: mockMarket };
+        const marketSource = mockMarketMap[id];
+        if (!marketSource) {
+            return { success: false, error: "Market not found" };
+        }
+
+        const market = clone(marketSource);
+        if (!market.chartData && mockMarketCharts[marketSource.id]) {
+            market.chartData = clone(mockMarketCharts[marketSource.id]);
+        }
+
+        return { success: true, data: market };
     }
 
-    async getMarkets(): Promise<PaginatedResponse<MarketData>> {
-        await new Promise(resolve => setTimeout(resolve, 300));
+    async getMarkets(filters?: MarketFilters): Promise<PaginatedResponse<MarketData>> {
+        await delay(200);
+        let data = mockMarkets;
+
+        if (filters) {
+            const { category, status, search, limit, offset } = filters;
+            data = data.filter((market) => {
+                if (category && market.category !== category) return false;
+                if (status && market.status !== status) return false;
+                if (search) {
+                    const term = search.toLowerCase();
+                    if (!market.title.toLowerCase().includes(term) &&
+                        !(market.description ?? "").toLowerCase().includes(term)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            if (typeof offset === "number" || typeof limit === "number") {
+                const start = offset ?? 0;
+                const end = typeof limit === "number" ? start + limit : undefined;
+                data = data.slice(start, end);
+            }
+        }
+
+        const cloned = data.map((market) => clone(market));
         return {
             success: true,
-            data: [],
-            pagination: { page: 1, limit: 10, total: 0, totalPages: 0 }
+            data: cloned,
+            pagination: {
+                page: 1,
+                limit: cloned.length,
+                total: cloned.length,
+                totalPages: 1
+            }
         };
     }
 
-    async getMarketChart(): Promise<ApiResponse<ChartDataPoint[]>> {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        const mockData: ChartDataPoint[] = [
-            { timestamp: Date.now() - 86400000 * 30, time: "Sep", yes: 60, no: 40 },
-            { timestamp: Date.now() - 86400000 * 15, time: "Oct", yes: 65, no: 35 },
-            { timestamp: Date.now(), time: "Nov", yes: 80, no: 20 },
-        ];
-        return { success: true, data: mockData };
+    async getMarketChart(id: string, timeframe = "1D"): Promise<ApiResponse<ChartDataPoint[]>> {
+        await delay(150);
+        void timeframe; // timeframe used for API parity; mock returns full range
+        const chart = mockMarketCharts[id] ?? mockMarketCharts[DEFAULT_MARKET_ID] ?? [];
+        return { success: true, data: clone(chart) };
     }
 
-    async getRelatedNews(): Promise<ApiResponse<NewsItem[]>> {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        const mockNews: NewsItem[] = [
-            {
-                id: "1",
-                title: "Fed rate hike in 2025?",
-                author: "Market Analyst", 
-                avatar: "👴",
-                percentage: 1,
-                category: "Fed Rates",
-                publishedAt: new Date().toISOString()
-            }
-        ];
-        return { success: true, data: mockNews };
+    async getRelatedNews(id: string): Promise<ApiResponse<NewsItem[]>> {
+        await delay(180);
+        const news = mockMarketNews[id] ?? mockMarketNews[DEFAULT_MARKET_ID] ?? [];
+        return { success: true, data: clone(news) };
     }
 
     async placeTrade(): Promise<ApiResponse<TradingOrder>> {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await delay(400);
         return { success: true, message: "Trade executed successfully" };
     }
 
@@ -229,7 +214,9 @@ export const marketService = new MarketService();
 export const tradingService = new TradingService();
 export const mockApiService = new MockApiService();
 
+export type ApiService = MarketApiService & TradingApiService;
+
 // Use mock service in development, real service in production
-export const apiService = process.env.NODE_ENV === 'development' 
-    ? mockApiService 
-    : { ...marketService, ...tradingService };
+export const apiService: ApiService = process.env.NODE_ENV === "development"
+    ? mockApiService
+    : ({ ...marketService, ...tradingService } as ApiService);
