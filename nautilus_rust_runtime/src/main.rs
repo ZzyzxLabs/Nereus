@@ -1,20 +1,14 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
-};
+use axum::{Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::post};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::fs;
 use std::{
     collections::HashMap,
+    io::Write,
     process::Stdio,
     sync::{Arc, RwLock},
-    io::Write,
 };
-use std::fs;
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -127,9 +121,7 @@ async fn main() {
 
     println!("Rust runtime listening on http://{addr}");
 
-    axum::serve(listener, app)
-        .await
-        .expect("server error");
+    axum::serve(listener, app).await.expect("server error");
 }
 
 // -------- Handlers --------
@@ -186,34 +178,30 @@ async fn execute_program(
 
     // ---- 2. 根據語言執行 ----
     let output = match program.language {
-        Language::Js | Language::Ts => {
-            execute_with_node(&program.code, &req.payload)
-                .await
-                .map_err(|err| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({
-                            "error": "execution_failed",
-                            "engine": "node",
-                            "message": err.to_string(),
-                        })),
-                    )
-                })?
-        }
-        Language::Py => {
-            execute_with_python(&program.code, &req.payload)
-                .await
-                .map_err(|err| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({
-                            "error": "execution_failed",
-                            "engine": "python",
-                            "message": err.to_string(),
-                        })),
-                    )
-                })?
-        }
+        Language::Js | Language::Ts => execute_with_node(&program.code, &req.payload)
+            .await
+            .map_err(|err| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "execution_failed",
+                        "engine": "node",
+                        "message": err.to_string(),
+                    })),
+                )
+            })?,
+        Language::Py => execute_with_python(&program.code, &req.payload)
+            .await
+            .map_err(|err| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "execution_failed",
+                        "engine": "python",
+                        "message": err.to_string(),
+                    })),
+                )
+            })?,
     };
 
     // ---- 3. 回傳標準化結果 ----

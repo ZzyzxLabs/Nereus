@@ -2,13 +2,14 @@
 
 [move]
 version = 3
-manifest_digest = "F97ACC8C6686F98F76FF0BD1E3E46321F3C20CB2C9124B58E1A131C20CEFFC52"
-deps_digest = "397E6A9F7A624706DBDFEE056CE88391A15876868FD18A88504DA74EB458D697"
+manifest_digest = "8DA6AD89697FD8D61C1D54DFED30959A0523168F31A6E80E108EEA1A390F8388"
+deps_digest = "52B406A7A21811BEF51751CF88DA0E76DAEFFEAC888D4F4060B1A72BBE7D8D35"
 dependencies = [
   { id = "Bridge", name = "Bridge" },
   { id = "MoveStdlib", name = "MoveStdlib" },
   { id = "Sui", name = "Sui" },
   { id = "SuiSystem", name = "SuiSystem" },
+  { id = "Walrus", name = "Walrus" },
   { id = "enclave", name = "enclave" },
 ]
 
@@ -44,6 +45,23 @@ dependencies = [
 ]
 
 [[move.package]]
+id = "WAL"
+source = { git = "https://github.com/MystenLabs/walrus-docs.git", rev = "main", subdir = "contracts\\wal" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+]
+
+[[move.package]]
+id = "Walrus"
+source = { git = "https://github.com/MystenLabs/walrus-docs.git", rev = "main", subdir = "contracts/walrus" }
+
+dependencies = [
+  { id = "Sui", name = "Sui" },
+  { id = "WAL", name = "WAL" },
+]
+
+[[move.package]]
 id = "enclave"
 source = { local = "..\\enclave" }
 
@@ -58,3 +76,11 @@ dependencies = [
 compiler-version = "1.55.0"
 edition = "2024.beta"
 flavor = "sui"
+
+[env]
+
+[env.testnet]
+chain-id = "4c78adac"
+original-published-id = "0x2d8a5c183187d3c62d7aebdd2893570afe322e9f7ca7294cd98190f4084d3ec0"
+latest-published-id = "0x2d8a5c183187d3c62d7aebdd2893570afe322e9f7ca7294cd98190f4084d3ec0"
+published-version = "1"
