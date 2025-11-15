@@ -8,7 +8,8 @@ import { Label } from "@workspace/ui/components/label";
 import { Textarea } from "@workspace/ui/components/textarea";
 import { WalrusCodeUploader } from "./walrus/walrus-code-uploader";
 import type { WalrusUploadResult } from "@/lib/walrus/uploadToWalrus";
-import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
+import { createMarketTx } from "@/store/move/create";
 
 type Step = 0 | 1 | 2 | 3 | 4;
 
@@ -94,6 +95,20 @@ const initialState: FormState = {
 };
 
 export function CreateWizard() {
+	const client = useSuiClient();
+	const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+		execute: async ({ bytes, signature }) =>
+			await client.executeTransactionBlock({
+				transactionBlock: bytes,
+				signature,
+				options: {
+					// Raw effects are required so the effects can be reported back to the wallet
+					showRawEffects: true,
+					// Select additional data to return
+					showObjectChanges: true,
+				},
+			}),
+	});
 	const [step, setStep] = useState<Step>(0);
 	const [form, setForm] = useState<FormState>(initialState);
 	const [submitting, setSubmitting] = useState(false);
@@ -153,12 +168,28 @@ export function CreateWizard() {
 
 	const onSubmit = async () => {
 		setSubmitting(true);
-		// Mock submit
-		await new Promise((r) => setTimeout(r, 800));
-		console.log("Submitted payload", form);
-		setSubmitting(false);
-	};
+		try {
+			// Create end time as timestamp
+			const endDateTime = new Date(`${form.endDate}T${form.endTime}`);
+			const endTimeTimestamp = Math.floor(endDateTime.getTime() / 1000); // Convert to seconds
+			const startTimeTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
 
+			// Create the market transaction
+			const tx = createMarketTx(
+				form.name,
+				form.marketRules || form.rules,
+				startTimeTimestamp,
+				endTimeTimestamp
+			);
+			
+			signAndExecuteTransaction({ transaction: tx });
+			
+		} catch (error) {
+			console.error("Error creating market:", error);
+		} finally {
+			setSubmitting(false);
+		}
+	};
 	return (
 		<div className="w-full flex justify-center">
 			<Card className="w-3/4 p-6 space-y-6">
@@ -457,7 +488,7 @@ function ResolutionTypePage({
 				</div>
 				
 				<WalrusCodeUploader 
-					signer={curacc || null} // TODO: Get actual signer from context
+					signer={curacc || null} 
 					defaultFilename="resolution.ts"
 					onUploaded={onWalrusUpload}
 				/>
