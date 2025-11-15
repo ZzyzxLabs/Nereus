@@ -5,9 +5,11 @@ use sui::coin::{Self, Coin};
 use sui::object::{Self, UID, ID};
 use sui::transfer;
 use sui::tx_context::TxContext;
-use nereus::usdc::{Self, USDC};
 use std::string::String;
 use sui::clock::{Self, Clock};
+
+use nereus::usdc::{Self, USDC};
+use nereus::truth_oracle::{Self, TruthOracleHolder};
 
 /// === Error codes ===
 const WrongMarket: u64 = 1;
@@ -52,11 +54,13 @@ public struct Market has key {
     no: u64,
     description: String,
     start_time: u64,
-    end_time: u64
+    end_time: u64,
+    oracle_config_id: ID
 }
 
 /// Create a new prediction market
 public fun create_market(
+    holder: &TruthOracleHolder,
     topic: String,
     description: String,
     start_time: u64,
@@ -71,7 +75,8 @@ public fun create_market(
         no: 0,
         description,
         start_time,
-        end_time
+        end_time,
+        oracle_config_id: object::id(holder)
     };
     transfer::share_object(market);
 }
