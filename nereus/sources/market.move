@@ -17,6 +17,7 @@ const WrongTime: u64 = 2;
 const InvalidAmount: u64 = 3;
 const InsufficientPoolBalance: u64 = 4;
 const InsufficientPosition: u64 = 5;
+const WrongTruth: u64 = 6;
 
 /// === Fixed-point parameters ===
 /// All FP values are scaled by FP_SCALE (1e9)
@@ -372,4 +373,38 @@ fun quote_no_sell(market: &Market, shares: u64): u64 {
 
     let payout_u128 = shares_u128 * p_u128 / scale_u128;
     (payout_u128 as u64)
+}
+
+public fun redeem_yes(
+    yes_bet: &Yes,
+    market: &mut Market,
+    truth: &TruthOracleHolder,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    assert!(object::id(market) == yes_bet.market_id, WrongMarket);
+    assert!(object::id(market) == object::id(truth), WrongMarket);
+    assert!(clock::timestamp_ms(clock) >= market.end_time, WrongTime);
+    assert!(truth_oracle::get_outcome(truth) == true, WrongTruth);
+
+    let payout_amount = yes_bet.amount;
+    let reward = coin::take<USDC>(&mut market.balance, payout_amount, ctx);
+    transfer::public_transfer(reward, ctx.sender());
+}
+
+public fun redeem_no(
+    no_bet: &No,
+    market: &mut Market,
+    truth: &TruthOracleHolder,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    assert!(object::id(market) == no_bet.market_id, WrongMarket);
+    assert!(object::id(market) == object::id(truth), WrongMarket);
+    assert!(clock::timestamp_ms(clock) >= market.end_time, WrongTime);
+    assert!(truth_oracle::get_outcome(truth) == false, WrongTruth);
+
+    let payout_amount = no_bet.amount;
+    let reward = coin::take<USDC>(&mut market.balance, payout_amount, ctx);
+    transfer::public_transfer(reward, ctx.sender());
 }

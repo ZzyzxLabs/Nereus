@@ -95,6 +95,10 @@ public fun resolve_oracke<TRUTH_ORACLE: drop>(
     holder.result = result;
 }
 
+public fun get_outcome(holder: &TruthOracleHolder): bool {
+    holder.result
+}
+
 // TBD
 public fun create_wblob(
     blob: Blob,
