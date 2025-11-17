@@ -3,6 +3,11 @@
 #!/bin/bash
 # configure_enclave.sh
 
+# Ensure the script runs with bash even if invoked via sh
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
+
 # Additional information on this script. 
 show_help() {
     echo "configure_enclave.sh - Launch AWS EC2 instance with Nitro Enclaves and configure allowed endpoints. "
@@ -23,6 +28,9 @@ show_help() {
     echo "  export KEY_PAIR=<your-key-pair-name>"
     echo "  # optional: export REGION=<your-region>  (defaults to us-east-1)"
     echo "  # optional: export AMI_ID=<your-ami-id>  (defaults to ami-085ad6ae776d8f09c)"
+    echo "  # optional: export INSTANCE_TYPE=<type>  (defaults to m5.xlarge; must support Nitro Enclaves)"
+    echo "  # optional: export FORCE_NON_FREETIER=true (skip prompt if instance type is not free-tier eligible)"
+    echo "  # optional: export SKIP_EC2_LAUNCH=true (skip launching EC2; only patch local files)"
     echo "  # optional: export API_ENV_VAR_NAME=<env-var-name> (defaults to 'API_KEY')"
     echo "  ./configure_enclave.sh <APP>"
     echo ""
@@ -57,6 +65,9 @@ export AWS_DEFAULT_REGION="$REGION"
 # The default AMI for us-east-1. Change this if your region is different.
 AMI_ID="${AMI_ID:-ami-085ad6ae776d8f09c}"
 
+# Instance type to launch (must support Nitro Enclaves)
+INSTANCE_TYPE="${INSTANCE_TYPE:-m5.xlarge}"
+
 # Environment variable name for our secret; default is 'API_KEY'
 API_ENV_VAR_NAME="${API_ENV_VAR_NAME:-API_KEY}"
 
@@ -81,6 +92,13 @@ fi
 if ! command -v yq >/dev/null 2>&1; then
   echo "Error: yq is not installed."
   echo "Please install yq (for example: 'brew install yq' on macOS or 'sudo apt-get install yq' on Ubuntu) and try again."
+  exit 1
+fi
+
+# Check if jq is available (used for AWS CLI JSON parsing)
+if ! command -v jq >/dev/null 2>&1; then
+  echo "Error: jq is not installed."
+  echo "Please install jq (for example: 'brew install jq' on macOS or 'sudo apt-get install jq' on Ubuntu) and try again."
   exit 1
 fi
 
@@ -595,6 +613,44 @@ socat VSOCK-LISTEN:3001,reuseaddr,fork TCP:localhost:3001 &' src/nautilus-server
 fi
 
 ############################
+# Preflight: Check instance type suitability
+############################
+echo "Checking instance type '$INSTANCE_TYPE' in region '$REGION'..."
+TYPE_INFO=$(aws ec2 describe-instance-types \
+  --region "$REGION" \
+  --instance-types "$INSTANCE_TYPE" \
+  --query 'InstanceTypes[0].{Enclaves:NitroEnclavesSupport,Free:FreeTierEligible,Type:InstanceType}' \
+  --output json 2>/dev/null || true)
+
+if [ -z "$TYPE_INFO" ] || [ "$TYPE_INFO" = "null" ]; then
+  echo "Error: Unable to describe instance type '$INSTANCE_TYPE' in region '$REGION'." \
+       "Check the type/region or your AWS permissions."
+  exit 1
+fi
+
+ENCLAVES_SUPPORT=$(echo "$TYPE_INFO" | jq -r '.Enclaves // "unsupported"')
+FREE_TIER=$(echo "$TYPE_INFO" | jq -r '.Free // false')
+
+if [ "$ENCLAVES_SUPPORT" != "supported" ]; then
+  echo "Error: Instance type '$INSTANCE_TYPE' does not support Nitro Enclaves (reported: $ENCLAVES_SUPPORT)."
+  echo "Please set INSTANCE_TYPE to a Nitro Enclaves capable type (e.g., m5.xlarge, c6i.xlarge) and retry."
+  exit 1
+fi
+
+if [ "$FREE_TIER" != "true" ]; then
+  if [ "${FORCE_NON_FREETIER:-}" = "true" ]; then
+    echo "Proceeding with non-Free Tier instance type '$INSTANCE_TYPE' (FORCE_NON_FREETIER=true)."
+  else
+    echo "Warning: Instance type '$INSTANCE_TYPE' is NOT Free Tier eligible."
+    read -p "Continue and incur potential charges? (y/N): " CONTINUE_CHOICE
+    if [[ ! "$CONTINUE_CHOICE" =~ ^[Yy]$ ]]; then
+      echo "Aborting per user choice."
+      exit 1
+    fi
+  fi
+fi
+
+############################
 # Create or Use Security Group
 ############################
 SECURITY_GROUP_NAME="instance-script-sg"
@@ -632,6 +688,14 @@ else
 fi
 
 ############################
+# Optionally skip EC2 launch
+############################
+if [ "${SKIP_EC2_LAUNCH:-}" = "true" ]; then
+  echo "Skipping EC2 launch (SKIP_EC2_LAUNCH=true). Local files have been updated."
+  exit 0
+fi
+
+############################
 # Launch EC2
 ############################
 echo "Launching EC2 instance with Nitro Enclaves enabled..."
@@ -639,14 +703,23 @@ echo "Launching EC2 instance with Nitro Enclaves enabled..."
 INSTANCE_ID=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$AMI_ID" \
-  --instance-type m5.xlarge \
+  --instance-type "$INSTANCE_TYPE" \
   --key-name "$KEY_PAIR" \
   --user-data file://user-data.sh \
   --block-device-mappings '[{"DeviceName":"/dev/xvda","Ebs":{"VolumeSize":200}}]' \
   --enclave-options Enabled=true \
   --security-group-ids "$SECURITY_GROUP_ID" \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${FINAL_INSTANCE_NAME}},{Key=instance-script,Value=true}]" \
-  --query "Instances[0].InstanceId" --output text)
+  --query "Instances[0].InstanceId" --output text 2>/dev/null || true)
+
+if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+  echo "Error: Failed to launch EC2 instance."
+  echo "- Region: $REGION"
+  echo "- AMI: $AMI_ID"
+  echo "- Instance type: $INSTANCE_TYPE"
+  echo "Check your AWS limits, permissions, and billing settings."
+  exit 1
+fi
 
 echo "Instance launched with ID: $INSTANCE_ID"
 
@@ -679,7 +752,7 @@ PUBLIC_IP=$(aws ec2 describe-instances \
 
 echo "[*] Commit the code generated in expose_enclave.sh and src/nautilus-server/run.sh. They will be needed when building the enclave inside the instance."
 echo "[*] Please wait 2-3 minutes for the instance to finish the init script before sshing into it."
-echo "[*] ssh inside the launched EC2 instance. e.g. \`ssh ec2-user@\"$PUBLIC_IP\"\` assuming the ssh-key is loaded into the agent."
+echo "[*] ssh inside the launched EC2 instance. e.g. \`ssh ec2-user@$PUBLIC_IP\` assuming the ssh-key is loaded into the agent."
 echo "[*] Clone or copy the repo with the above generated code."
 echo "[*] Inside repo directory: 'make ENCLAVE_APP=<APP>' and then 'make run'"
 echo "[*] Run expose_enclave.sh from within the EC2 instance to expose the enclave to the internet."

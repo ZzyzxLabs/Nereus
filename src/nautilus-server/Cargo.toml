@@ -41,6 +41,9 @@ thiserror = "2.0.17"
 walrus_rs = "0.1.4"
 
 [features]
+default = ["runtime"]
+
+runtime = []
 weather-example = []
-twitter-example = ["regex"]
-seal-example = ["sui-crypto", "sui-sdk-types", "seal-sdk"]
+twitter-example = []
+seal-example = []

@@ -10,17 +10,6 @@ use serde_json::json;
 use std::fmt;
 
 mod apps {
-    #[cfg(feature = "twitter-example")]
-    #[path = "twitter-example/mod.rs"]
-    pub mod twitter_example;
-
-    #[cfg(feature = "weather-example")]
-    #[path = "weather-example/mod.rs"]
-    pub mod weather_example;
-
-    #[cfg(feature = "seal-example")]
-    #[path = "seal-example/mod.rs"]
-    pub mod seal_example;
 
     #[cfg(feature = "runtime")]
     #[path = "runtime/mod.rs"]
@@ -28,14 +17,6 @@ mod apps {
 }
 
 pub mod app {
-    #[cfg(feature = "twitter-example")]
-    pub use crate::apps::twitter_example::*;
-
-    #[cfg(feature = "weather-example")]
-    pub use crate::apps::weather_example::*;
-
-    #[cfg(feature = "seal-example")]
-    pub use crate::apps::seal_example::*;
 
     #[cfg(feature = "runtime")]
     pub use crate::apps::runtime::*;
@@ -47,8 +28,6 @@ pub mod common;
 pub struct AppState {
     /// Ephemeral keypair on boot
     pub eph_kp: Ed25519KeyPair,
-    /// API key when querying api.weatherapi.com
-    pub api_key: String,
 }
 
 /// Implement IntoResponse for EnclaveError.
