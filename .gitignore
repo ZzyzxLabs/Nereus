@@ -12,3 +12,5 @@ secrets-policy.json
 /target
 
 .secret
+
+*.pem
