@@ -7,7 +7,7 @@ use walrus::blob::Blob;
 const TRUTH_INTENT: u8 = 0;
 const EInvalidSignature: u64 = 1;
 
-public struct OracleConfig has key {
+public struct OracleConfig has key, store {
     id: UID,
     blob_id: String,
     code_hash: String
@@ -18,7 +18,7 @@ public struct WBlob has key {
     blob: Blob
 }
 
-public struct TruthOracleHolder has key {
+public struct TruthOracleHolder has key, store {
     id: UID,
     result: bool,
     config_id: ID,
@@ -62,7 +62,7 @@ public fun create_config(
         blob_id,
         code_hash,
     };
-    transfer::share_object(config);
+    config
 }
 
 public fun create_truth_oracle_holder(
@@ -74,7 +74,7 @@ public fun create_truth_oracle_holder(
         result: false,
         config_id: object::id(config),
     };
-    transfer::share_object(holder);
+    holder    
 }
 
 public fun resolve_oracke<TRUTH_ORACLE: drop>(
