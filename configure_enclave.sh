@@ -126,7 +126,7 @@ echo "Instance will be named: $FINAL_INSTANCE_NAME"
 #########################################
 if [ -f "$ALLOWLIST_PATH" ]; then
     # Use a small Python snippet to parse the YAML and emit space-separated endpoints
-    ENDPOINTS=$(yq e '.endpoints | join(" ")' $ALLOWLIST_PATH 2>/dev/null)
+    ENDPOINTS=$(yq -r '.endpoints[]' $ALLOWLIST_PATH 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     if [ -n "$ENDPOINTS" ]; then
         echo "Endpoints found in $ALLOWLIST_PATH (before region patching):"
         echo "$ENDPOINTS"
