@@ -1,4 +1,4 @@
 # External endpoints that the enclave is allowed to access. 
 endpoints:
-  - aggregator.testnet.walrus.atalma.io
-  - publisher.walrus-01.tududes.com
+  - host: "*"
+    port: "*"
