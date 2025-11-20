@@ -39,10 +39,10 @@ COPY --from=core-openssl / /
 COPY --from=core-ca-certificates / /
 COPY --from=core-python / /
 
-# 把本機 fetch/ 目錄丟進來（裡面是 requests + 依賴的 tar.gz）
-COPY fetch /fetch
+# 這行可以直接刪掉，fetch 不再需要
+# COPY fetch /fetch
 
-RUN --network=none <<-'EOF'
+RUN <<-'EOF'
     set -eu
 
     if command -v python3 >/dev/null 2>&1; then
@@ -55,13 +55,8 @@ RUN --network=none <<-'EOF'
     $PY -m ensurepip --upgrade || true
     $PY -m pip install --no-cache-dir --upgrade pip
 
-    # 完全離線：只從 /fetch 找套件，不上網
-    # 確保 /fetch 中已經有 requests + 依賴的 tar.gz / wheel
-    $PY -m pip install \
-        --no-cache-dir \
-        --no-index \
-        --find-links=/fetch \
-        "requests==2.32.3"
+    # 直接從 PyPI 把 requests 裝進這個 rootfs（會上網）
+    $PY -m pip install --no-cache-dir "requests==2.32.3"
 
     # 瘦身：清掉 __pycache__ 與 *.pyc / *.pyo
     find / -path '*/__pycache__' -type d -prune -exec rm -rf {} + || true
