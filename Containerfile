@@ -24,7 +24,7 @@ FROM stagex/linux-nitro@sha256:073c4603686e3bdc0ed6755fee3203f6f6f1512e0ded09eae
 FROM stagex/user-cpio@sha256:2695e1b42f93ec3ea0545e270f0fda4adca3cb48d0526da01954efae1bce95c4 AS user-cpio
 FROM stagex/user-socat:local@sha256:acef3dacc5b805d0eaaae0c2d13f567bf168620aea98c8d3e60ea5fd4e8c3108 AS user-socat
 FROM stagex/user-jq@sha256:ced6213c21b570dde1077ef49966b64cbf83890859eff83f33c82620520b563e AS user-jq
-FROM stagex/core-nodejs@sha256:1f705b58321b17e87ea68c04431ad83be6e6b64253d0443be4c61501902d57c3 AS core-nodejs
+FROM stagex/core-nodejs@sha256:023ad02e108d2c7559938ef6922daff8f921440d6c3699b29efd303cbc1936ca AS core-nodejs
 
 FROM core-python AS core-python-with-requests
 RUN python -m ensurepip || true && \
