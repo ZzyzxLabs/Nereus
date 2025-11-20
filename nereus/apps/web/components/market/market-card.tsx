@@ -1,25 +1,26 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
-import { Button } from "@workspace/ui/components/button"
 import { Separator } from "@workspace/ui/components/separator"
 import { PricePill } from "./price-pill"
 import { Sparkline } from "./sparkline"
 import { Stat } from "./stat"
-import { Market, storeStore } from "@/store/storeStore"
+import { Market } from "@/store/storeStore"
 import { useBuyYes } from "@/hooks/useBuyYes"
+import { useBuyNo } from "@/hooks/useBuyNo"
+import { FlipBuyButton } from "./flip-buy-button"
 
 // Utility function to format countdown from timestamp
 function formatCountdown(endTime: number): string {
-  const now = Math.floor(Date.now() / 1000)
+  const now = Math.floor(Date.now() )
   const timeLeft = endTime - now
-  
+
   if (timeLeft <= 0) {
     return "Ended"
   }
-  
-  const days = Math.floor(timeLeft / (24 * 60 * 60))
-  const hours = Math.floor((timeLeft % (24 * 60 * 60)) / (60 * 60))
-  const minutes = Math.floor((timeLeft % (60 * 60)) / 60)
-  
+
+  const days = Math.floor(timeLeft / (24 * 60 * 60 *1000))
+  const hours = Math.floor((timeLeft % (24 * 60 * 60 *1000)) / (60 * 60 *1000))
+  const minutes = Math.floor((timeLeft % (60 * 60 *1000)) / (60 * 1000))
+
   if (days > 0) {
     return `${days}d ${hours}h`
   } else if (hours > 0) {
@@ -40,62 +41,73 @@ interface MarketCardProps {
   onMarketClick?: (market: Market) => void
 }
 
-// 1. 大型列表卡片 (詳細資訊)
+// 1. 大型列表卡片 (Detailed View)
 export function MarketCard({ m, onMarketClick }: MarketCardProps) {
-  // 連接 Store 的 selectTrade
-  const selectTrade = storeStore((state) => state.selectTrade);
-  const { handleBuyYes } = useBuyYes();
-  
+  const { handleBuyYes } = useBuyYes()
+  const { handleBuyNo } = useBuyNo()
+
   const total = m.yes + m.no
   const yesPercentage = calculatePercentage(m.yes, total)
   const noPercentage = calculatePercentage(m.no, total)
   const countdown = formatCountdown(m.end_time)
+  const isEnded = countdown === "Ended"
 
   const yesFee = m.yesprice ? Number(m.yesprice) / 1e9 : undefined
   const noFee = m.noprice ? Number(m.noprice) / 1e9 : undefined
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden h-full flex flex-col">
       <CardHeader className="p-4">
-        <CardTitle 
-          className="text-lg cursor-pointer hover:text-primary transition-colors"
+        <CardTitle
+          className="text-lg cursor-pointer hover:text-primary transition-colors break-words hyphens-auto"
           onClick={() => onMarketClick?.(m)}
         >
           {m.topic}
         </CardTitle>
-        <p className="text-sm text-muted-foreground line-clamp-2">{m.description}</p>
+        <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+          {m.description}
+        </p>
       </CardHeader>
-      <CardContent className="grid gap-3 p-4 pt-0 md:grid-cols-5">
-        <div className="col-span-3 rounded-md bg-muted/40 p-2">
-          <Sparkline width={520} height={120} />
-        </div>
-        <div className="col-span-2 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <PricePill side="Yes" price={yesPercentage} />
-            <PricePill side="No" price={noPercentage} />
+      
+      <CardContent className="grid gap-4 p-4 pt-0 md:grid-cols-5 flex-1">
+        {/* Chart Section - Handles overflow with min-w-0 */}
+        <div className="col-span-3 rounded-md bg-muted/40 p-2 min-w-0 flex items-center justify-center">
+          <div className="w-full">
+             <Sparkline width={520} height={120} className="w-full h-auto" />
           </div>
-          <Separator />
-          <Stat label="Ends in" value={countdown} />
-          <Stat label="Balance" value={`${m.balance} USDC`} />
-          <Stat label="Fee" value={`Yes: ${yesFee !== undefined ? yesFee : "-"} | No: ${noFee !== undefined ? noFee : "-"}`} />
-          <div className="mt-auto flex gap-2">
-            {/* 這裡點擊後會更新 Store，並觸發 TradePanel */}
-            <Button 
-              className="flex-1"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleBuyYes(m);
-              }}
-            >
-              Buy Yes
-            </Button>
-            <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={() => selectTrade(m, "No")}
-            >
-              Buy No
-            </Button>
+        </div>
+
+        {/* Stats & Action Section */}
+        <div className="col-span-2 flex flex-col justify-between gap-3 min-w-0">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <PricePill side="Yes" price={yesPercentage} />
+              <PricePill side="No" price={noPercentage} />
+            </div>
+            <Separator />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 lg:grid-cols-1">
+               <Stat label="Ends in" value={countdown} />
+               <Stat label="Balance" value={`${m.balance} USDC`} />
+               <Stat
+                 label="Fee"
+                 value={`Yes: ${yesFee !== undefined ? yesFee : "-"} | No: ${noFee !== undefined ? noFee : "-"}`}
+               />
+            </div>
+          </div>
+
+          <div className="mt-auto flex gap-2 pt-2">
+            <FlipBuyButton
+              side="YES"
+              price={yesFee ?? 0}
+              onConfirm={(amount) => handleBuyYes(m, amount)}
+              className={`flex-1 min-w-[80px] ${isEnded ? "hidden" : ""}`}
+            />
+            <FlipBuyButton
+              side="NO"
+              price={noFee ?? 0}
+              onConfirm={(amount) => handleBuyNo(m, amount)}
+              className={`flex-1 min-w-[80px] ${isEnded ? "hidden" : ""}`}
+            />
           </div>
         </div>
       </CardContent>
@@ -103,70 +115,115 @@ export function MarketCard({ m, onMarketClick }: MarketCardProps) {
   )
 }
 
-// 2. 中型網格卡片 (較精簡)
+// 2. 中型網格卡片 (Grid View - Fixed Overlap)
 export function MarketCardGrid({ m, onMarketClick }: MarketCardProps) {
-  const selectTrade = storeStore((state) => state.selectTrade);
-  const { handleBuyYes } = useBuyYes();
+  const { handleBuyYes } = useBuyYes()
+  const { handleBuyNo } = useBuyNo()
 
   const total = m.yes + m.no
   const yesPercentage = calculatePercentage(m.yes, total)
   const noPercentage = calculatePercentage(m.no, total)
   const countdown = formatCountdown(m.end_time)
+  const isEnded = countdown === "Ended"
+  
   const yesFee = m.yesprice ? Number(m.yesprice) / 1e9 : undefined
   const noFee = m.noprice ? Number(m.noprice) / 1e9 : undefined
 
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow">
+    <Card className="cursor-pointer hover:shadow-md transition-shadow flex flex-col h-full">
       <CardHeader className="pb-2">
-        <CardTitle 
-            className="line-clamp-2 text-base"
-            onClick={() => onMarketClick?.(m)}
+        <CardTitle
+          className="line-clamp-2 text-base break-words hyphens-auto leading-snug"
+          onClick={() => onMarketClick?.(m)}
         >
-            {m.topic}
+          {m.topic}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <Sparkline width={300} height={70} />
-        <div className="flex items-center justify-between">
-          <PricePill side="Yes" price={yesPercentage} />
-          {/* 透過 stopPropagation 防止點擊按鈕時觸發卡片的 onClick */}
-          <Button className="ml-2 h-8 px-3" size="sm" onClick={(e) => { e.stopPropagation(); handleBuyYes(m); }}>
-             Yes
-          </Button>
-          
-          <PricePill side="No" price={noPercentage} />
-          <Button className="ml-2 h-8 px-3" size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); selectTrade(m, "No"); }}>
-             No
-          </Button>
+      
+      <CardContent className="space-y-3 flex-1 flex flex-col">
+        <div className="w-full overflow-hidden">
+           <Sparkline width={300} height={70} className="w-full h-auto" />
         </div>
-        <Stat label="Ends in" value={countdown} />
-        <Stat label="Fee" value={`Y: ${yesFee ?? "-"} | N: ${noFee ?? "-"}`} />
+
+        {/* Split into 2 columns to prevent buttons from overlapping pills */}
+        <div className="grid grid-cols-2 gap-3 mt-auto">
+            {/* Yes Column */}
+            <div className="flex flex-col gap-2">
+                <div className="flex justify-center">
+                    <PricePill side="Yes" price={yesPercentage} />
+                </div>
+                {!isEnded && (
+                    <FlipBuyButton
+                        side="YES"
+                        price={yesFee ?? 0}
+                        onConfirm={(amount) => handleBuyYes(m, amount)}
+                        className="w-full text-xs h-9"
+                    />
+                )}
+            </div>
+
+            {/* No Column */}
+            <div className="flex flex-col gap-2">
+                <div className="flex justify-center">
+                    <PricePill side="No" price={noPercentage} />
+                </div>
+                {!isEnded && (
+                    <FlipBuyButton
+                        side="NO"
+                        price={noFee ?? 0}
+                        onConfirm={(amount) => handleBuyNo(m, amount)}
+                        className="w-full text-xs h-9"
+                    />
+                )}
+            </div>
+        </div>
+
+        <div className="flex justify-between items-center pt-2 border-t text-xs">
+             <Stat label="Ends" value={countdown} />
+             <Stat label="Fee" value={`Y:${yesFee ?? "-"} N:${noFee ?? "-"}`} />
+        </div>
       </CardContent>
     </Card>
   )
 }
 
-// 3. 小型卡片 (適合側邊欄或密集顯示)
+// 3. 小型卡片 (Compact/Sidebar View)
 export function MarketCardSmall({ m, onMarketClick }: MarketCardProps) {
   const total = m.yes + m.no
   const yesPercentage = calculatePercentage(m.yes, total)
   const noPercentage = calculatePercentage(m.no, total)
   const countdown = formatCountdown(m.end_time)
+  
   const yesFee = m.yesprice ? Number(m.yesprice) / 1e9 : undefined
   const noFee = m.noprice ? Number(m.noprice) / 1e9 : undefined
 
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onMarketClick?.(m)}>
-      <CardHeader className="pb-2">
-        <CardTitle className="line-clamp-2 text-sm">{m.topic}</CardTitle>
+    <Card 
+      className="cursor-pointer hover:shadow-md transition-shadow w-full" 
+      onClick={() => onMarketClick?.(m)}
+    >
+      <CardHeader className="pb-2 p-3">
+        <CardTitle className="line-clamp-2 text-sm leading-tight break-words">
+            {m.topic}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="flex items-center justify-between">
+      <CardContent className="space-y-2 p-3 pt-0">
+        <div className="flex items-center justify-between gap-2">
           <PricePill side="Yes" price={yesPercentage} />
           <PricePill side="No" price={noPercentage} />
         </div>
-        <Stat label="Ends in" value={countdown} />
-        <Stat label="Fee" value={`Y: ${yesFee ?? "-"} | N: ${noFee ?? "-"}`} />
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <div className="flex justify-between">
+                <span>Ends:</span>
+                <span className="font-medium text-foreground">{countdown}</span>
+            </div>
+            <div className="flex justify-between">
+                <span>Fee:</span>
+                <span className="font-medium text-foreground truncate ml-2">
+                    Y:{yesFee ?? "-"} N:{noFee ?? "-"}
+                </span>
+            </div>
+        </div>
       </CardContent>
     </Card>
   )

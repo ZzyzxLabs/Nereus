@@ -52,7 +52,7 @@ const templates: Template[] = [
 	{
 		id: "market-cap",
 		title: "Largest Company by Market Cap",
-		description: "Which company will have the largest market capitalization by December 31, 2025?",
+		description: "#Economy Which company will have the largest market capitalization by December 31, 2025?",
 		category: "Business",
 		rules: "Resolved by market cap at deadline",
 		marketRules: "This market will be resolved based on the publicly traded company with the highest market capitalization at the deadline. Market cap will be determined by the closing stock price multiplied by the number of outstanding shares on the resolution date. Data will be sourced from reliable financial data providers such as Yahoo Finance, Bloomberg, or Reuters.",
@@ -64,7 +64,7 @@ const templates: Template[] = [
 	{
 		id: "sui-price",
 		title: "Sui Price Range",
-		description: "Will Sui (SUI) be trading above $2.50 by the deadline?",
+		description: "#Crypto Will Sui (SUI) be trading above $2.50 by the deadline?",
 		category: "Crypto",
 		rules: "Resolved by SUI price at deadline",
 		marketRules: "This market will resolve as YES if the price of Sui (SUI) is above $2.50 at the deadline, and NO if it is $2.50 or below. The price will be determined using the closing price from major cryptocurrency exchanges such as Binance, Coinbase, or CoinGecko's aggregated price at the resolution time.",
@@ -76,7 +76,7 @@ const templates: Template[] = [
 	{
 		id: "premier-league",
 		title: "Premier League Match",
-		description: "Who will win the next Tottenham vs Manchester United match?",
+		description: "#Sports Who will win the next Tottenham vs Manchester United match?",
 		category: "Sports",
 		rules: "Resolved by official match result",
 		marketRules: "This market will be resolved based on the official result of the next Premier League match between Tottenham Hotspur and Manchester United. The result will be determined by the final score after 90 minutes plus injury time (regular time only, not including extra time or penalties). Options: Tottenham Win, Manchester United Win, or Draw.",
@@ -185,8 +185,8 @@ export function CreateWizard() {
 		try {
 			// Create end time as timestamp
 			const endDateTime = new Date(`${form.endDate}T${form.endTime}`);
-			const endTimeTimestamp = Math.floor(endDateTime.getTime() / 1000); // Convert to seconds
-			const startTimeTimestamp = Math.floor(Date.now() / 1000); // Current time in seconds
+			const endTimeTimestamp = endDateTime.getTime(); // Convert to seconds
+			const startTimeTimestamp = Date.now(); // Current time in seconds
 			console.log(form)
 
 			// Create the market transaction

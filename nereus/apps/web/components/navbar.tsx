@@ -6,8 +6,20 @@ import { NereusLogo } from "./branding"
 import { SearchInput } from "./search-input"
 import { ConnectButton } from "@mysten/dapp-kit"
 import { useRouter } from "next/navigation"
+import { useSignAndExecuteTransaction } from "@mysten/dapp-kit"
+import { NaYuTx } from "@/store/move/faucet"
+import { Transaction } from "@mysten/sui/transactions"
+
 export function Navbar() {
+  
   const router = useRouter();
+  const { mutateAsync } = useSignAndExecuteTransaction();
+
+  async function faucetOpen() {
+    const tx = new Transaction();
+    NaYuTx(tx);
+    await mutateAsync({ transaction: tx });
+  }
 
   return (
     <header className="sticky top-0 z-30 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -30,6 +42,7 @@ export function Navbar() {
           <Button variant="ghost" size="sm" asChild>
             <Link href="/create">Create</Link>
           </Button>
+          <Button variant="ghost" size="sm" onClick={faucetOpen}>Faucet</Button>
           <ConnectButton />
         </div>
       </div>

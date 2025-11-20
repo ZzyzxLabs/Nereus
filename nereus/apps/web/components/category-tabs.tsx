@@ -9,6 +9,7 @@ const CATEGORIES = [
   "Crypto",
   "Sports",
   "Tech",
+  "Ended"
 ]
 
 export function CategoryTabs({ children }: { children: (active: string) => React.ReactNode }) {

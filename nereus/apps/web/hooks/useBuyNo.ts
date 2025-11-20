@@ -1,15 +1,15 @@
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { storeStore, Market } from "../store/storeStore";
-import { buyYesTx } from "../store/move/buy_yes";
+import { buyNoTx } from "../store/move/buy_no";
 import { useCallback } from "react";
 
-export function useBuyYes() {
+export function useBuyNo() {
     const currentAccount = useCurrentAccount();
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const { fetchUser } = storeStore();
 
-    const handleBuyYes = useCallback(async (market: Market, ticketAmount: bigint) => {
+    const handleBuyNo = useCallback(async (market: Market, ticketAmount: bigint) => {
         if (!currentAccount) {
             alert("Please connect your wallet first");
             return;
@@ -29,7 +29,7 @@ export function useBuyYes() {
             return;
         }
 
-        if (!market.yesprice) {
+        if (!market.noprice) {
             alert("Market price not available");
             return;
         }
@@ -37,15 +37,15 @@ export function useBuyYes() {
         const tx = new Transaction();
         
         try {
-            buyYesTx(
+            buyNoTx(
                 tx,
                 freshUser.USDC,
                 market.address,
-                freshUser.YesPositions, // This might be empty, buyYesTx handles it
-                market.yesprice * ticketAmount, // Buy ticketAmount tokens at current price
+                freshUser.NoPositions, // This might be empty, buyNoTx handles it
+                market.noprice * ticketAmount, // Buy ticketAmount tokens at current price
                 currentAccount.address
             );
-            console.log("Constructer", tx);
+
             signAndExecuteTransaction(
                 {
                     transaction: tx,
@@ -71,5 +71,5 @@ export function useBuyYes() {
 
     }, [currentAccount, signAndExecuteTransaction, fetchUser]);
 
-    return { handleBuyYes };
+    return { handleBuyNo };
 }

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { gqlQuery } from "@/utils/gql";
-import { market } from "./move/package";
+import { base, market } from "./move/package";
 import { getPrices } from "./move/getPriceCaller";
 
 export type Market = {
@@ -15,6 +15,7 @@ export type Market = {
   oracle_config: string;
   yesprice?: bigint;
   noprice?: bigint;
+  category?: string;
 };
 
 type User = {
@@ -77,6 +78,7 @@ export const storeStore = create<StoreState>((set) => ({
         oracle_config: content.oracle_config_id,
         yesprice: prices ? prices[0] : undefined,
         noprice: prices ? prices[1] : undefined,
+        
       };
     });
 
@@ -90,30 +92,30 @@ export const storeStore = create<StoreState>((set) => ({
 
   fetchUser: async (userAddress: string) => {
     const res = await gqlQuery(`
-      query {
-        coins(
-          ownerAddress: "${userAddress}",
-          coinType: "0xb4e5d71c9937ee1b8736606f2230b89862d35f3e944f42f78bd8bc7876b66007::usdc::USDC"
-        ) {
-          nodes {
-            objectId
-            balance
-            coinType
-          }
+      {
+  address(address: "${userAddress}") {
+    balance(coinType: "${base}::usdc::USDC") {
+      totalBalance
+    }
+    
+    objects(filter: {
+      type: "0x2::coin::Coin<${base}::usdc::USDC>"
+    }) {
+      nodes {
+        address 
         }
       }
+    }
+  }
     `);
-
-    // [修正 3] 解析資料並更新 State
-    const nodes = res.data?.coins?.nodes || [];
-    
-    // 假設你的 User type 定義 USDC 是 string[] (Object IDs)
-    const usdcIds = nodes.map((coin: any) => coin.objectId);
+    // Parse the response and update state
+    const nodes = res.data?.address?.objects?.nodes || [];
+    const usdcIds = nodes.map((obj: any) => obj.address);
 
     set((state) => ({
       user: {
-        ...state.user, // 保留原本的 Positions (如果有的話)
-        USDC: usdcIds,
+      ...state.user,
+      USDC: usdcIds,
       },
     }));
     

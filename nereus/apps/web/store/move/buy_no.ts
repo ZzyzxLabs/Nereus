@@ -1,11 +1,11 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { market  } from "./package"; // Renamed to avoid conflict with argument
+import { market as PACKAGE_ID } from "./package";
 
-export function buyYesTx(
+export function buyNoTx(
     tx: Transaction,
     USDC: string[],   // Array of USDC coin object IDs
     marketId: string, // The Market Object ID
-    yesPositions: string[] | undefined, // Array of existing YES Position IDs
+    noPositions: string[] | undefined, // Array of existing NO Position IDs
     amount: bigint,   // The amount of USDC to bet
     userAddress: string // Required to transfer the new object if we create one
 ): Transaction {
@@ -14,7 +14,7 @@ export function buyYesTx(
     // We must provide a coin with EXACTLY 'amount' value.
     if (USDC.length === 0) throw new Error("No USDC coins provided");
     
-    const primaryCoin = tx.object(USDC[0]);
+    const primaryCoin = tx.object(USDC[0]!);
     
     // If multiple USDC coins, merge them into the first one to ensure sufficient balance
     if (USDC.length > 1) {
@@ -24,28 +24,28 @@ export function buyYesTx(
     // Split off the exact amount required for the bet
     const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amount)]);
 
-    // 2. Handle YES Position Object
-    // We need a 'Yes' object to add the shares to. 
-    let targetYesPosition;
+    // 2. Handle NO Position Object
+    // We need a 'No' object to add the shares to. 
+    let targetNoPosition;
     let isNewPosition = false;
 
-    if (yesPositions && yesPositions.length > 0) {
+    if (noPositions && noPositions.length > 0) {
         // Use the first existing position found
-        targetYesPosition = tx.object(yesPositions[0]);
+        targetNoPosition = tx.object(noPositions[0]!);
     } else {
-        // If no position exists, we must mint a zero_yes ticket first
+        // If no position exists, we must mint a zero_no ticket first
         isNewPosition = true;
-        targetYesPosition = tx.moveCall({
-            target: `${market}::zero_yes`,
+        targetNoPosition = tx.moveCall({
+            target: `${PACKAGE_ID}::zero_no`,
             arguments: [tx.object(marketId)],
         });
     }
 
     // 3. Execute the Bet
     tx.moveCall({
-        target: `${market}::bet_yes`,
+        target: `${PACKAGE_ID}::bet_no`,
         arguments: [
-            targetYesPosition,      // &mut Yes
+            targetNoPosition,       // &mut No
             tx.object(marketId),    // &mut Market
             tx.pure.u64(amount),    // amount (u64)
             paymentCoin,            // Coin<USDC> (exact value)
@@ -57,7 +57,7 @@ export function buyYesTx(
     // If we created a new Position object, we must transfer it to the user.
     // If we used an existing one, it remains in their wallet (shared/owned).
     if (isNewPosition) {
-        tx.transferObjects([targetYesPosition], tx.pure.address(userAddress));
+        tx.transferObjects([targetNoPosition], tx.pure.address(userAddress));
     }
 
     return tx;

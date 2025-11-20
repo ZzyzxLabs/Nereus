@@ -6,6 +6,8 @@ import { PricePill } from "../market/price-pill";
 import { Sparkline } from "../market/sparkline";
 import { storeStore } from "@/store/storeStore";
 import { useBuyYes } from "@/hooks/useBuyYes";
+import { useBuyNo } from "@/hooks/useBuyNo";
+import { FlipBuyButton } from "../market/flip-buy-button";
 
 // 輔助：計算百分比
 function calculatePercentage(value: number, total: number): number {
@@ -14,11 +16,12 @@ function calculatePercentage(value: number, total: number): number {
 }
 
 // 輔助：格式化時間 (如果沒有 date-fns，可以用這個簡單版)
-const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString();
+const formatDate = (ts: number) => new Date(ts ).toLocaleString();
 
 export function MarketDetailSidebar() {
   const { selectedMarket, setSelectedMarket } = storeStore();
   const { handleBuyYes } = useBuyYes();
+  const { handleBuyNo } = useBuyNo();
   
   // 當沒有選中時，我們不 render null，而是透過 CSS class 把它移出畫面
   // 這樣可以保有 transition 動畫效果
@@ -36,6 +39,9 @@ export function MarketDetailSidebar() {
   const noPercentage = m ? calculatePercentage(m.no, total) : 0;
   const yesFee = m?.yesprice ? Number(m.yesprice) / 1e9 : "-";
   const noFee = m?.noprice ? Number(m.noprice) / 1e9 : "-";
+
+  const now = Math.floor(Date.now() / 1000);
+  const isEnded = m ? m.end_time <= now : false;
 
   return (
     <>
@@ -113,7 +119,7 @@ export function MarketDetailSidebar() {
                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Wallet className="h-4 w-4" /> Pool Balance
                   </div>
-                  <p className="font-medium">{m.balance} USDC</p>
+                  <p className="font-medium">{m.balance/1e9} USDC</p>
                 </div>
 
                 <div className="space-y-1">
@@ -141,17 +147,22 @@ export function MarketDetailSidebar() {
 
             {/* Footer Actions */}
             <div className="p-6 border-t bg-muted/10 mt-auto">
-              <div className="flex gap-4">
-                <Button 
-                  className="flex-1 h-12 text-lg bg-green-600 hover:bg-green-700"
-                  onClick={() => m && handleBuyYes(m)}
-                >
-                  Buy Yes ({yesPercentage}%)
-                </Button>
-                <Button className="flex-1 h-12 text-lg bg-red-600 hover:bg-red-700" variant="outline">
-                  Buy No ({noPercentage}%)
-                </Button>
-              </div>
+              {!isEnded && (
+                <div className="flex gap-4">
+                  <FlipBuyButton
+                    side="YES"
+                    price={typeof yesFee === 'number' ? yesFee : 0}
+                    onConfirm={(amount) => m && handleBuyYes(m, amount)}
+                    className="flex-1 h-12"
+                  />
+                  <FlipBuyButton
+                    side="NO"
+                    price={typeof noFee === 'number' ? noFee : 0}
+                    onConfirm={(amount) => m && handleBuyNo(m, amount)}
+                    className="flex-1 h-12"
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}

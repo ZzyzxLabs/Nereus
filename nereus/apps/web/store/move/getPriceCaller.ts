@@ -2,6 +2,7 @@ import { Transaction } from "@mysten/sui/transactions";
 // import { base } from "./package"; // Assumed existing local import
 import { SuiClient } from "@mysten/sui/client";
 import { bcs } from "@mysten/sui/bcs";
+import { base } from "./package";
 
 export async function getPrices(marketObjectId: string) {
   const tx = new Transaction();
@@ -9,7 +10,7 @@ export async function getPrices(marketObjectId: string) {
   
   // 1. Build the Move Call
   tx.moveCall({
-    target: `0xb4e5d71c9937ee1b8736606f2230b89862d35f3e944f42f78bd8bc7876b66007::market::get_prices`,
+    target: `${base}::market::get_prices`,
     arguments: [tx.object(marketObjectId)],
   });
 
