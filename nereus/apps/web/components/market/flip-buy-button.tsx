@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Check, X } from 'lucide-react';
 
 interface FlipBuyButtonProps {
@@ -6,12 +6,28 @@ interface FlipBuyButtonProps {
   price: number;
   onConfirm: (amount: bigint) => void;
   className?: string;
+  // 新增受控組件所需的 props
+  amount?: string;
+  setAmount?: (val: string) => void;
+  selectedSide?: 'YES' | 'NO' | null;
+  setSelectedSide?: (side: 'YES' | 'NO' | null) => void;
 }
 
-export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButtonProps) => {
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [amount, setAmount] = useState("");
+export const FlipBuyButton = ({ 
+  side, 
+  price, 
+  onConfirm, 
+  className,
+  amount = "",           // 預設值，防止未傳入時報錯
+  setAmount,
+  selectedSide,
+  setSelectedSide
+}: FlipBuyButtonProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // 判斷是否翻轉：如果父組件告訴我是這個 side 被選中，我就翻轉
+  // 如果沒有傳入 selectedSide (舊用法)，則不翻轉 (或保留內部 state，但這裡為了配合 MarketCard 全改為受控)
+  const isFlipped = selectedSide === side;
 
   // 樣式設定：根據 YES/NO 決定顏色
   const isYes = side === "YES";
@@ -24,7 +40,8 @@ export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButt
   // 自動聚焦邏輯
   useEffect(() => {
     if (isFlipped && inputRef.current) {
-      setTimeout(() => inputRef.current!.focus(), 300);
+      // 延遲一點點等待動畫
+      setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [isFlipped]);
 
@@ -33,110 +50,9 @@ export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButt
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
 
     try {
-      // 假設輸入是 ETH/USDC，轉成類似 Wei 的 BigInt (x 10^18)
-      // 這裡為了示範簡單用整數，實際專案可能需要 ethers.parseUnits
-      // User requested: "讓用戶輸入的值變成useBuyYes的回傳值"
-      // Assuming the input is the number of tickets (integers) or amount of USDC?
-      // In useBuyYes, it takes ticketAmount.
-      // If the user inputs "10", it means 10 tickets? Or 10 USDC?
-      // The user code says: const val = BigInt(Math.floor(Number(amount) * 1_000_000)); 
-      // This looks like converting to 6 decimals (USDC).
-      // But useBuyYes takes `ticketAmount`.
-      // If `ticketAmount` is number of tickets, then it should be integer.
-      // If `ticketAmount` is amount of USDC, then it should be scaled.
-      
-      // In useBuyYes: `market.yesprice * ticketAmount`
-      // If `yesprice` is price per ticket (e.g. 0.75 USDC * 10^9), and `ticketAmount` is number of tickets.
-      // Then total cost is `yesprice * ticketAmount`.
-      
-      // If the user inputs "10" (USDC) they want to spend.
-      // Then `ticketAmount` = `amount / yesprice`.
-      
-      // However, the user code provided:
-      // const val = BigInt(Math.floor(Number(amount) * 1_000_000)); 
-      // onConfirm(val);
-      
-      // I should stick to the user's provided logic for now, or adapt it to `ticketAmount`.
-      // If `ticketAmount` is just a number (bigint), I'll pass it as is.
-      // But wait, `useBuyYes` expects `ticketAmount` to be multiplied by `yesprice`.
-      // `market.yesprice * ticketAmount`.
-      // If `ticketAmount` is 1, cost is `yesprice`.
-      
-      // If the user inputs "amount", is it "amount of tickets" or "amount of USDC"?
-      // The placeholder says "Amount".
-      // The user code converts it * 1_000_000.
-      
-      // Let's assume the user inputs the NUMBER OF TICKETS they want to buy.
-      // And since it's BigInt, maybe they want to support fractional tickets?
-      // But `ticketAmount` in `useBuyYes` is `bigint`.
-      
-      // If I look at `useBuyYes.ts`: `market.yesprice * ticketAmount`.
-      // If `ticketAmount` is 1, we buy 1 ticket.
-      
-      // The user's code: `BigInt(Math.floor(Number(amount) * 1_000_000))`
-      // This suggests they are treating the input as a float and converting to an integer with 6 decimals.
-      // Maybe they think `ticketAmount` is in some unit?
-      
-      // If I just use `BigInt(amount)` (if integer), it works for whole tickets.
-      // If I use the user's logic, I get a very large number if input is 1.
-      
-      // I will use the user's logic but maybe adjust the multiplier if needed.
-      // But wait, if I pass 1_000_000 to `useBuyYes`, it will try to buy 1 million tickets.
-      // That might be too much.
-      
-      // Let's assume the user wants to input the number of tickets.
-      // And `ticketAmount` is just that number.
-      // So `BigInt(amount)` is probably what is needed if amount is integer.
-      
-      // But the user provided code specifically has:
-      // const val = BigInt(Math.floor(Number(amount) * 1_000_000)); 
-      
-      // Maybe they want to buy fractional tickets?
-      // Does the contract support fractional tickets?
-      // `bet_yes` takes `amount` (u64).
-      // `market.yesprice * ticketAmount`.
-      // If `ticketAmount` is 1, `amount` = `yesprice`.
-      // If `ticketAmount` is 0.5? `ticketAmount` is bigint, so it can't be 0.5.
-      
-      // So `ticketAmount` must be integer?
-      // If `ticketAmount` represents "shares" where 1 share = 1 unit.
-      // Maybe the contract uses a base?
-      
-      // Let's look at `buy_yes.ts`:
-      // `market.yesprice * ticketAmount`
-      // `yesprice` is likely scaled (e.g. 10^9).
-      // If `ticketAmount` is 1, we pay `yesprice`.
-      
-      // If the user wants to buy 1 ticket, they input 1.
-      // If I use the user's code, `val` becomes 1,000,000.
-      // Then `useBuyYes` calculates `yesprice * 1,000,000`.
-      // That's 1 million tickets.
-      
-      // I suspect the user's code snippet was just an example ("這裡為了示範簡單用整數").
-      // I should probably change it to `BigInt(amount)` for integer tickets.
-      // Or if they want to input USDC amount?
-      
-      // "讓用戶輸入的值變成useBuyYes的回傳值"
-      // "Let the user input value become the return value of useBuyYes" (passed to it).
-      
-      // I'll stick to `BigInt(amount)` assuming integer tickets for now, 
-      // OR I can keep their logic if they really want 1M multiplier.
-      // But 1M multiplier seems wrong for "ticket count".
-      
-      // However, if I look at the prompt again:
-      // "拿裡面的按鈕替換目前的 buy yes buy no，並讓用戶輸入的值變成useBuyYes的回傳值"
-      // It implies I should use the code they gave me.
-      
-      // I will use `BigInt(amount)` because `ticketAmount` implies count.
-      // And I'll comment out their multiplier logic with a note.
-      
       const val = BigInt(Math.floor(Number(amount))); 
-      
       onConfirm(val);
-      
-      // 重置狀態
-      setAmount("");
-      setIsFlipped(false);
+      // 注意：重置狀態的邏輯通常由父組件的 onConfirm 處理
     } catch (error) {
       console.error("BigInt Conversion Error", error);
     }
@@ -144,8 +60,22 @@ export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButt
 
   const handleCancel = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsFlipped(false);
-    setAmount("");
+    // 通知父組件取消選擇
+    if (setSelectedSide) setSelectedSide(null);
+    if (setAmount) setAmount("");
+  };
+
+  const handleFlip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 通知父組件選擇了我
+    if (setSelectedSide) setSelectedSide(side);
+  };
+
+  // 處理輸入變更
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (setAmount) {
+        setAmount(e.target.value);
+    }
   };
 
   return (
@@ -161,7 +91,7 @@ export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButt
         {/* --- 正面 (Front): 顯示價格與方向 --- */}
         <div className="absolute inset-0 w-full h-full [backface-visibility:hidden]">
           <button
-            onClick={() => setIsFlipped(true)}
+            onClick={handleFlip}
             className={`
               w-full h-full rounded-md shadow-sm bg-gradient-to-r ${gradient}
               flex items-center justify-between px-3 text-white font-bold text-sm
@@ -195,14 +125,13 @@ export const FlipBuyButton = ({ side, price, onConfirm, className }: FlipBuyButt
 
             {/* 金額輸入框 */}
             <div className="flex-1 relative flex items-center min-w-0">
-              {/* <DollarSign className="w-3 h-3 text-slate-500 absolute left-1 pointer-events-none" /> */}
               <input
                 ref={inputRef}
                 type="number"
                 step="1"
                 min="1"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={handleInputChange}
                 placeholder="#"
                 className="w-full h-full bg-transparent px-1 text-white placeholder-slate-500 outline-none text-xs font-mono text-center"
               />

@@ -141,7 +141,7 @@ export function CreateWizard() {
 		const endTime = "23:59"; // Set to end of day
 		
 		setForm({
-			...form,
+			...initialState,
 			selectedTemplate: template,
 			name: template.description,
 			rules: template.rules,
@@ -158,7 +158,7 @@ export function CreateWizard() {
 	};
 
 	const createFromScratch = () => {
-		setForm({ ...form, selectedTemplate: undefined });
+		setForm({ ...initialState, selectedTemplate: undefined });
 		next();
 	};
 

@@ -9,19 +9,21 @@ import { useBuyYes } from "@/hooks/useBuyYes"
 import { useBuyNo } from "@/hooks/useBuyNo"
 import { FlipBuyButton } from "./flip-buy-button"
 import Link from "next/link"
+import { useState } from "react"
+import { cn } from "@workspace/ui/lib/utils"
 
 // Utility function to format countdown from timestamp
 function formatCountdown(endTime: number): string {
-  const now = Math.floor(Date.now() )
+  const now = Math.floor(Date.now())
   const timeLeft = endTime - now
 
   if (timeLeft <= 0) {
     return "Ended"
   }
 
-  const days = Math.floor(timeLeft / (24 * 60 * 60 *1000))
-  const hours = Math.floor((timeLeft % (24 * 60 * 60 *1000)) / (60 * 60 *1000))
-  const minutes = Math.floor((timeLeft % (60 * 60 *1000)) / (60 * 1000))
+  const days = Math.floor(timeLeft / (24 * 60 * 60 * 1000))
+  const hours = Math.floor((timeLeft % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+  const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000))
 
   if (days > 0) {
     return `${days}d ${hours}h`
@@ -43,10 +45,14 @@ interface MarketCardProps {
   onMarketClick?: (market: Market) => void
 }
 
-// 1. 大型列表卡片 (Detailed View)
+// 1. Large List Card (Detailed View)
 export function MarketCard({ m, onMarketClick }: MarketCardProps) {
   const { handleBuyYes } = useBuyYes()
   const { handleBuyNo } = useBuyNo()
+  
+  // Lifted state for controlled inputs and instant calculation
+  const [amount, setAmount] = useState("");
+  const [selectedSide, setSelectedSide] = useState<'YES' | 'NO' | null>(null);
 
   const total = m.yes + m.no
   const yesPercentage = calculatePercentage(m.yes, total)
@@ -54,64 +60,135 @@ export function MarketCard({ m, onMarketClick }: MarketCardProps) {
   const countdown = formatCountdown(m.end_time)
   const isEnded = countdown === "Ended"
 
-  const yesFee = m.yesprice ? Number(m.yesprice) / 1e9 : undefined
-  const noFee = m.noprice ? Number(m.noprice) / 1e9 : undefined
+  // Parse fees, default to 0 if undefined
+  const yesFee = m.yesprice ? Number(m.yesprice) / 1e9 : 0
+  const noFee = m.noprice ? Number(m.noprice) / 1e9 : 0
+
+  // Calculation Logic
+  const currentFee = selectedSide === 'YES' ? yesFee : selectedSide === 'NO' ? noFee : 0;
+  
+  // Calculate total cost safely
+  const parsedAmount = parseFloat(amount);
+  const isValidAmount = !isNaN(parsedAmount) && parsedAmount > 0;
+  const currentTotal = (currentFee && isValidAmount)
+    ? (currentFee * parsedAmount).toFixed(4)
+    : "0.0000";
+
+  // Reset handler
+  const handleConfirm = (side: 'YES' | 'NO', val: bigint) => {
+    if (side === 'YES') handleBuyYes(m, val);
+    else handleBuyNo(m, val);
+    
+    setAmount("");
+    setSelectedSide(null);
+  };
 
   return (
-    <Card className="overflow-hidden h-full flex flex-col">
-      <CardHeader className="p-4">
-        <CardTitle
-          className="text-lg cursor-pointer hover:text-primary transition-colors break-words hyphens-auto"
-          onClick={() => onMarketClick?.(m)}
-        >
-          {m.topic}
-        </CardTitle>
-        <p className="text-sm text-muted-foreground line-clamp-2 break-words">
+    <Card className="overflow-hidden h-full flex flex-col shadow-sm hover:shadow-md transition-all">
+      <CardHeader className="p-4 pb-2">
+        <div className="flex justify-between items-start gap-4">
+          <CardTitle
+            className="text-lg cursor-pointer hover:text-primary transition-colors break-words hyphens-auto leading-tight"
+            onClick={() => onMarketClick?.(m)}
+          >
+            {m.topic}
+          </CardTitle>
+        </div>
+        <p className="text-sm text-muted-foreground line-clamp-2 break-words mt-1">
           {m.description}
         </p>
       </CardHeader>
       
-      <CardContent className="grid gap-4 p-4 pt-0 md:grid-cols-5 flex-1">
-        {/* Chart Section - Handles overflow with min-w-0 */}
-        <div className="col-span-3 rounded-md bg-muted/40 p-2 min-w-0 flex items-center justify-center">
+      <CardContent className="grid gap-4 p-4 pt-2 md:grid-cols-5 flex-1">
+        {/* Chart Section */}
+        <div className="col-span-3 rounded-lg bg-muted/30 border p-3 min-w-0 flex items-center justify-center">
           <div className="w-full">
-             <Sparkline width={520} height={120} className="w-full h-auto" />
+             <Sparkline width={520} height={140} className="w-full h-auto" />
           </div>
         </div>
 
         {/* Stats & Action Section */}
-        <div className="col-span-2 flex flex-col justify-between gap-3 min-w-0">
+        <div className="col-span-2 flex flex-col justify-between min-w-0 gap-2">
           <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               <PricePill side="Yes" price={yesPercentage} />
               <PricePill side="No" price={noPercentage} />
             </div>
             <Separator />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-1 lg:grid-cols-1">
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
                <Stat label="Ends in" value={countdown} />
-               <Stat label="Balance" value={`${m.balance} USDC`} />
-               <Stat
-                 label="Fee"
-                 value={`Yes: ${yesFee !== undefined ? yesFee : "-"} | No: ${noFee !== undefined ? noFee : "-"}`}
-               />
+               <Stat label="Pool" value={`${(m.balance/1e9).toFixed(2)} U`} />
+               <div className="col-span-2">
+                 <Stat
+                   label="Current Price"
+                   value={`Y: ${yesFee.toFixed(3)} | N: ${noFee.toFixed(3)}`}
+                 />
+               </div>
             </div>
           </div>
 
-          <div className="mt-auto space-y-2 pt-2">
+          <div className="mt-auto pt-2 space-y-3">
+            {/* Buttons Row */}
             <div className="flex gap-2">
               <FlipBuyButton
                 side="YES"
-                price={yesFee ?? 0}
-                onConfirm={(amount) => handleBuyYes(m, amount)}
+                price={yesFee}
+                amount={amount}
+                setAmount={setAmount}
+                selectedSide={selectedSide}
+                setSelectedSide={setSelectedSide}
+                onConfirm={(val) => handleConfirm('YES', val)}
                 className={`flex-1 min-w-[80px] ${isEnded ? "hidden" : ""}`}
               />
               <FlipBuyButton
                 side="NO"
-                price={noFee ?? 0}
-                onConfirm={(amount) => handleBuyNo(m, amount)}
+                price={noFee}
+                amount={amount}
+                setAmount={setAmount}
+                selectedSide={selectedSide}
+                setSelectedSide={setSelectedSide}
+                onConfirm={(val) => handleConfirm('NO', val)}
                 className={`flex-1 min-w-[80px] ${isEnded ? "hidden" : ""}`}
               />
             </div>
+
+            {/* Enlarged Dynamic Calculation Area */}
+            {!isEnded && (
+              <div className={cn(
+                "rounded-xl border-2 p-4 text-center transition-all duration-300 relative overflow-hidden",
+                "min-h-[100px] flex flex-col justify-center items-center shadow-inner",
+                !selectedSide && "bg-muted/20 border-dashed border-muted-foreground/20 text-muted-foreground",
+                selectedSide === 'YES' && "bg-emerald-50/80 border-emerald-500/30 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-100",
+                selectedSide === 'NO' && "bg-rose-50/80 border-rose-500/30 text-rose-900 dark:bg-rose-950/20 dark:text-rose-100"
+              )}>
+                {!selectedSide ? (
+                  <div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+                    <span className="text-sm font-medium">Estimate Cost</span>
+                    <span className="text-xs opacity-70">Select YES or NO to calculate</span>
+                  </div>
+                ) : (
+                  <div className="w-full animate-in slide-in-from-bottom-2 fade-in duration-200">
+                    <div className="flex items-center justify-center gap-2 mb-1 opacity-70">
+                       <span className="text-[10px] uppercase tracking-wider font-bold">
+                         Estimated Cost ({selectedSide})
+                       </span>
+                    </div>
+                    
+                    <div className="text-3xl font-bold tracking-tight leading-none mb-1">
+                      {currentTotal}
+                      <span className="text-sm font-normal opacity-70 ml-1">USDC</span>
+                    </div>
+
+                    <div className="text-xs opacity-60 font-mono flex justify-center items-center gap-1">
+                      <span>{currentFee.toFixed(4)}</span>
+                      <span>×</span>
+                      <span>{isValidAmount ? parsedAmount : 0}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <Link href={`/market?id=${m.address}`}>
               <Button variant="outline" className="w-full" size="sm">
                 View Details
@@ -124,7 +201,7 @@ export function MarketCard({ m, onMarketClick }: MarketCardProps) {
   )
 }
 
-// 2. 中型網格卡片 (Grid View - Fixed Overlap)
+// 2. Medium Grid Card (Grid View)
 export function MarketCardGrid({ m, onMarketClick }: MarketCardProps) {
   const { handleBuyYes } = useBuyYes()
   const { handleBuyNo } = useBuyNo()
@@ -154,7 +231,6 @@ export function MarketCardGrid({ m, onMarketClick }: MarketCardProps) {
            <Sparkline width={300} height={70} className="w-full h-auto" />
         </div>
 
-        {/* Split into 2 columns to prevent buttons from overlapping pills */}
         <div className="grid grid-cols-2 gap-3 mt-auto">
             {/* Yes Column */}
             <div className="flex flex-col gap-2">
@@ -189,7 +265,7 @@ export function MarketCardGrid({ m, onMarketClick }: MarketCardProps) {
 
         <div className="flex justify-between items-center pt-2 border-t text-xs">
              <Stat label="Ends" value={countdown} />
-             <Stat label="Fee" value={`Y:${yesFee ?? "-"} N:${noFee ?? "-"}`} />
+             <Stat label="Fee" value={`Y:${yesFee?.toFixed(2) ?? "-"} N:${noFee?.toFixed(2) ?? "-"}`} />
         </div>
         
         <Link href={`/market?id=${m.address}`}>
@@ -202,7 +278,7 @@ export function MarketCardGrid({ m, onMarketClick }: MarketCardProps) {
   )
 }
 
-// 3. 小型卡片 (Compact/Sidebar View)
+// 3. Small Card (Compact/Sidebar View)
 export function MarketCardSmall({ m, onMarketClick }: MarketCardProps) {
   const total = m.yes + m.no
   const yesPercentage = calculatePercentage(m.yes, total)
@@ -235,7 +311,7 @@ export function MarketCardSmall({ m, onMarketClick }: MarketCardProps) {
             <div className="flex justify-between">
                 <span>Fee:</span>
                 <span className="font-medium text-foreground truncate ml-2">
-                    Y:{yesFee ?? "-"} N:{noFee ?? "-"}
+                    Y:{yesFee?.toFixed(2) ?? "-"} N:{noFee?.toFixed(2) ?? "-"}
                 </span>
             </div>
         </div>

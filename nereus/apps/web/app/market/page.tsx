@@ -38,6 +38,19 @@ export default function MarketPage() {
 		console.log("Resolve button pressed for market:", marketId);
 	};
 
+
+	// 新增本地 state
+	const [amount, setAmount] = React.useState("");
+	const [selectedSide, setSelectedSide] = React.useState<'YES' | 'NO' | null>(null);
+
+	// 計算區塊
+	const currentFee = selectedSide === 'YES' ? (typeof yesFee === 'number' ? yesFee : 0) : selectedSide === 'NO' ? (typeof noFee === 'number' ? noFee : 0) : 0;
+	const parsedAmount = parseFloat(amount);
+	const isValidAmount = !isNaN(parsedAmount) && parsedAmount > 0;
+	const currentTotal = (currentFee && isValidAmount)
+		? (currentFee * parsedAmount).toFixed(4)
+		: "0.0000";
+
 	return (
 		<div className="max-w-3xl mx-auto py-8">
 			<div className="space-y-6">
@@ -107,22 +120,76 @@ export default function MarketPage() {
 					</div>
 				</div>
 
+				{/* Calculation Area */}
 				<div className="border-t pt-6 flex flex-col gap-4">
 					{!isEnded && (
-						<div className="flex gap-4">
-							<FlipBuyButton
-								side="YES"
-								price={typeof yesFee === 'number' ? yesFee : 0}
-								onConfirm={(amount) => {}}
-								className="flex-1 h-12"
-							/>
-							<FlipBuyButton
-								side="NO"
-								price={typeof noFee === 'number' ? noFee : 0}
-								onConfirm={(amount) => {}}
-								className="flex-1 h-12"
-							/>
-						</div>
+						<>
+							<div
+								className={`rounded-xl border-2 p-4 text-center transition-all duration-300 relative overflow-hidden min-h-[100px] flex flex-col justify-center items-center shadow-inner mb-4
+									${!selectedSide ? "bg-muted/20 border-dashed border-muted-foreground/20 text-muted-foreground" : ""}
+									${selectedSide === 'YES' ? "bg-emerald-50/80 border-emerald-500/30 text-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-100" : ""}
+									${selectedSide === 'NO' ? "bg-rose-50/80 border-rose-500/30 text-rose-900 dark:bg-rose-950/20 dark:text-rose-100" : ""}
+								`}
+							>
+								{!selectedSide ? (
+									<div className="flex flex-col items-center gap-1 animate-in fade-in duration-300">
+										<span className="text-sm font-medium">Estimate Cost</span>
+										<span className="text-xs opacity-70">Select YES or NO to calculate</span>
+									</div>
+								) : (
+									<div className="w-full animate-in slide-in-from-bottom-2 fade-in duration-200">
+										<div className="flex items-center justify-center gap-2 mb-1 opacity-70">
+											<span className="text-[10px] uppercase tracking-wider font-bold">
+												Estimated Cost ({selectedSide})
+											</span>
+										</div>
+										<div className="text-3xl font-bold tracking-tight leading-none mb-1">
+											{currentTotal}
+											<span className="text-sm font-normal opacity-70 ml-1">USDC</span>
+										</div>
+										<div className="text-xs opacity-60 font-mono flex justify-center items-center gap-1">
+											<span>{currentFee.toFixed(4)}</span>
+											<span>×</span>
+											<span>{isValidAmount ? parsedAmount : 0}</span>
+										</div>
+									</div>
+								)}
+							</div>
+
+							{/* 使用 FlipBuyButton 互動邏輯 */}
+							<div className="flex gap-2 mb-2">
+								<FlipBuyButton
+									side="YES"
+									price={typeof yesFee === 'number' ? yesFee : 0}
+									amount={amount}
+									setAmount={setAmount}
+									selectedSide={selectedSide}
+									setSelectedSide={setSelectedSide}
+									onConfirm={() => {
+										// TODO: 實際下單邏輯
+										setAmount("");
+										setSelectedSide(null);
+									}}
+									className="flex-1 h-12"
+									disabled={isEnded}
+								/>
+								<FlipBuyButton
+									side="NO"
+									price={typeof noFee === 'number' ? noFee : 0}
+									amount={amount}
+									setAmount={setAmount}
+									selectedSide={selectedSide}
+									setSelectedSide={setSelectedSide}
+									onConfirm={() => {
+										// TODO: 實際下單邏輯
+										setAmount("");
+										setSelectedSide(null);
+									}}
+									className="flex-1 h-12"
+									disabled={isEnded}
+								/>
+							</div>
+						</>
 					)}
 					<Button className="mt-4 w-full" onClick={handleResolve} variant="default">
 						Resolve

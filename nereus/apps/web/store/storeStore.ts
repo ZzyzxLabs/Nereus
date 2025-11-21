@@ -101,6 +101,24 @@ export const storeStore = create<StoreState>((set) => ({
     set({
       marketList: markets,
     });
+    
+    const now = Date.now() ; // 取得現在時間 (秒)
+
+    // 1. 進行中的市場：依照 end_time 由小到大排序 (結束時間近 -> 遠)
+    const activeMarkets = markets
+      .filter(m => m.end_time > now)
+      .sort((a, b) => a.end_time - b.end_time);
+
+    // 2. 已結束的市場：依照 end_time 由大到小排序 (剛結束的 -> 很久以前結束的)
+    // 這樣使用者在過期區塊先看到的會是最近剛開獎的，比較符合直覺
+    const expiredMarkets = markets
+      .filter(m => m.end_time <= now)
+      .sort((a, b) => b.end_time - a.end_time);
+
+    // 3. 合併並更新狀態：進行中在前，已結束在後
+    set({
+      marketList: [...activeMarkets, ...expiredMarkets],
+    });
   },
 
   fetchUser: async (userAddress: string) => {
