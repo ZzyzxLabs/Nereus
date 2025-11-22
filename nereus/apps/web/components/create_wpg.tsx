@@ -13,6 +13,8 @@ import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@
 import { createMarketTx } from "@/store/move/create";
 import { createMarketTx as createConfigTx } from "@/store/move/create_config";
 import { Transaction } from "@mysten/sui/transactions";
+import { sealClient } from "@/utils/sealClient";
+import { SealApiKeyUploader } from "./walrus/seal-api-uploader";
 
 type Step = 0 | 1 | 2 | 3 | 4;
 
@@ -506,6 +508,13 @@ function ResolutionTypePage({
 					initialTitle={form.name}
 					onUploaded={onAIPromptUpload}
 				/>
+				<SealApiKeyUploader
+				signer={curacc || null}
+				sealClient={sealClient}
+				packageId="0xYOUR_POLICY_PACKAGE"
+				policyId="0xYOUR_POLICY_ID_WITHOUT_PACKAGE_PREFIX"
+				threshold={2}
+				/>
 				
 			</div>
 		);
@@ -526,6 +535,13 @@ function ResolutionTypePage({
 					signer={curacc || null} 
 					defaultFilename="resolution.ts"
 					onUploaded={onWalrusUpload}
+				/>
+				<SealApiKeyUploader
+					signer={curacc || null}
+					sealClient={sealClient}
+					packageId="0xYOUR_POLICY_PACKAGE"
+					policyId="0xYOUR_POLICY_ID_WITHOUT_PACKAGE_PREFIX"
+					threshold={2}
 				/>
 				
 				
