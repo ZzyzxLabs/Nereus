@@ -120,6 +120,16 @@ public struct OrderCancelled has copy, drop {
     maker: address,
 }
 
+public struct SetMinted has copy, drop {
+    user: address,
+    amount: u64,
+}
+
+public struct SetMerged has copy, drop {
+    user: address,
+    amount: u64,
+}
+
 /// === Initialization ===
 
 public fun create_market(
@@ -182,7 +192,7 @@ public fun withdraw_usdc(market: &mut Market, amount: u64, ctx: &mut TxContext) 
     transfer::public_transfer(withdraw_coin, sender);
 }
 
-public fun deposit_position(market: &mut Market, yes_pos: Yes, ctx: &mut TxContext) {
+public fun deposit_yes_position(market: &mut Market, yes_pos: Yes, ctx: &mut TxContext) {
     assert!(yes_pos.market_id == object::id(market), EWrongMarket);
     let sender = tx_context::sender(ctx);
     let amount = yes_pos.amount;
@@ -226,6 +236,45 @@ public fun withdraw_no(market: &mut Market, amount: u64, ctx: &mut TxContext) {
     *bal_ref = *bal_ref - amount;
     let no_obj = No { id: object::new(ctx), amount, market_id: object::id(market) };
     transfer::public_transfer(no_obj, sender);
+}
+
+/// === 新增功能：不經過市場直接鑄造 (Split) ===
+/// 將 USDC 轉換為等量的 YES 和 NO (1:1:1)
+/// 這增加了 Vault 中的 YES 和 NO 餘額
+public fun mint_complete_set(market: &mut Market, payment: Coin<USDC>, ctx: &mut TxContext) {
+    let sender = tx_context::sender(ctx);
+    let amount = coin::value(&payment);
+
+    // 1. 將 USDC 存入資金池
+    balance::join(&mut market.balance, coin::into_balance(payment));
+
+    // 2. 在 Vault 中增加 YES 和 NO 的餘額
+    increase_balance(market, sender, ASSET_YES, amount);
+    increase_balance(market, sender, ASSET_NO, amount);
+
+    event::emit(SetMinted {
+        user: sender,
+        amount,
+    });
+}
+
+/// === 新增功能：不經過市場直接合併 (Merge) ===
+/// 將等量的 YES 和 NO 銷毀，換回 USDC
+public fun merge_complete_set(market: &mut Market, amount: u64, ctx: &mut TxContext) {
+    let sender = tx_context::sender(ctx);
+
+    // 1. 扣除 Vault 中的 YES 和 NO (必須兩者都有足夠餘額)
+    decrease_balance(market, sender, ASSET_YES, amount);
+    decrease_balance(market, sender, ASSET_NO, amount);
+
+    // 2. 從資金池提取 USDC 並發送給用戶
+    let payout = coin::take(&mut market.balance, amount, ctx);
+    transfer::public_transfer(payout, sender);
+
+    event::emit(SetMerged {
+        user: sender,
+        amount,
+    });
 }
 
 public fun post_order(market: &mut Market, order: Order, ctx: &mut TxContext) {

@@ -98,6 +98,103 @@ fun deposit_to_vault(scenario: &mut Scenario, user: address, amount: u64) {
 }
 
 // =========================================================================
+// Test Case: Mint/Merge Complete Set (No Trading)
+// =========================================================================
+
+#[test]
+fun test_mint_and_merge_complete_set() {
+    let mut scenario = ts::begin(ADMIN);
+    let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+    init_test_environment(&mut scenario);
+
+    // 給 Alice 100 USDC
+    fund_account(&mut scenario, ALICE, 100_000_000_000);
+
+    // === Step 1: 直接鑄造 (Split) ===
+    // Alice 將 100 USDC 轉換成 100 YES + 100 NO
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let usdc = ts::take_from_sender<Coin<USDC>>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        market::mint_complete_set(&mut market, usdc, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // === 驗證 Step 1 ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        // 提出來檢查，確認真的有 100 YES 和 100 NO
+        market::withdraw_yes(&mut market, 100_000_000_000, ctx);
+        market::withdraw_no(&mut market, 100_000_000_000, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // 檢查 Alice 錢包
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let yes_pos = ts::take_from_sender<Yes>(&scenario);
+        let no_pos = ts::take_from_sender<No>(&scenario);
+
+        assert!(market::yes_balance(&yes_pos) == 100_000_000_000, 1);
+        assert!(market::no_balance(&no_pos) == 100_000_000_000, 2);
+
+        // 歸還物件以便下一步測試
+        ts::return_to_sender(&scenario, yes_pos);
+        ts::return_to_sender(&scenario, no_pos);
+    };
+
+    // === Step 2: 合併 (Merge) ===
+    // Alice 決定把 50 YES + 50 NO 換回 50 USDC
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        // 先把剛提出來的 Position 存回去 (因為 mint/merge 是操作 Vault)
+        let yes_pos = ts::take_from_sender<Yes>(&scenario);
+        let no_pos = ts::take_from_sender<No>(&scenario);
+
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+        market::deposit_yes_position(&mut market, yes_pos, ctx);
+        market::deposit_no_position(&mut market, no_pos, ctx);
+
+        // 執行合併
+        market::merge_complete_set(&mut market, 50_000_000_000, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // === 驗證 Step 2 ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        // 驗證 Vault 剩下 50 YES (100 - 50)
+        market::withdraw_yes(&mut market, 50_000_000_000, ctx);
+
+        // 驗證錢包收到 50 USDC
+        // (因為前面全部存進去了，現在拿回來的應該只有這 50)
+        ts::return_shared(market);
+    };
+
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let coin = ts::take_from_sender<Coin<USDC>>(&scenario);
+        assert!(coin::value(&coin) == 50_000_000_000, 3);
+        ts::return_to_sender(&scenario, coin);
+    };
+
+    clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+// =========================================================================
 // Test Case 1: Minting Logic (Buy YES + Buy NO)
 // =========================================================================
 // Alice 想買 100 YES，出價 60 USDC (價格 0.6)
@@ -380,7 +477,7 @@ fun test_trading_flow_and_settlement() {
         let yes_pos = ts::take_from_sender<Yes>(&scenario);
         let ctx = ts::ctx(&mut scenario);
 
-        market::deposit_position(&mut market, yes_pos, ctx);
+        market::deposit_yes_position(&mut market, yes_pos, ctx);
 
         // 執行贖回：100 YES -> 100 USDC (因為 YES 贏了，價值 1.0)
         market::redeem_yes(&mut market, &holder, &clock, ctx);
@@ -679,7 +776,7 @@ fun test_get_bids_asks_paged_test_2() {
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
     init_test_environment(&mut scenario);
 
-    fund_account(&mut scenario, ALICE, 100_000_000_000);
+    fund_account(&mut scenario, ALICE, 200_000_000_000);
     fund_account(&mut scenario, BOB, 100_000_000_000);
     deposit_to_vault(&mut scenario, ALICE, 100_000_000_000);
 
@@ -693,6 +790,51 @@ fun test_get_bids_asks_paged_test_2() {
         // 將這個物件轉給 BOB (或銷毀，但這裡轉給 BOB 模擬他持有資產)
         sui::transfer::public_transfer(fake_yes, BOB);
 
+        ts::return_shared(market);
+    };
+
+    // === Step 1: 直接鑄造 (Split) ===
+    // Alice 將 100 USDC 轉換成 100 YES + 100 NO
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let usdc = ts::take_from_sender<Coin<USDC>>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+        debug::print(&usdc);
+
+        market::mint_complete_set(&mut market, usdc, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // === 驗證 Step 1 ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        // 提出來檢查，確認真的有 100 YES 和 100 NO
+        market::withdraw_yes(&mut market, 100_000_000_000, ctx);
+        market::withdraw_no(&mut market, 100_000_000_000, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // 檢查 Alice 錢包
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let yes_pos = ts::take_from_sender<Yes>(&scenario);
+        let no_pos = ts::take_from_sender<No>(&scenario);
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        assert!(market::yes_balance(&yes_pos) == 100_000_000_000, 1);
+        assert!(market::no_balance(&no_pos) == 100_000_000_000, 2);
+
+        // 歸還物件以便下一步測試
+        // 提出來檢查，確認真的有 100 YES 和 100 NO
+        market::deposit_yes_position(&mut market, yes_pos, ctx);
+        market::deposit_no_position(&mut market, no_pos, ctx);
         ts::return_shared(market);
     };
 
