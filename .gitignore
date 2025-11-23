@@ -11,6 +11,10 @@ secrets-policy.json
 /out
 /target
 
+/move/nereus/script/node_modules/*
+/move/nereus/script/package-lock.json
+/move/nereus/script/package.json
+
 .secret
 
 *.pem

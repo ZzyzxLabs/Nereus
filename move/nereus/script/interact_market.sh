@@ -198,152 +198,186 @@ case $OPTION in
         fi
         ;;
     4)
-        echo -e "${GREEN}讀取 Market 掛單狀態...${NC}"
+        echo -e "${GREEN}查詢 Order Book (Direct Scan Mode)...${NC}"
+        echo -e "${YELLOW}正在直接讀取鏈上訂單物件 (無需 BCS 解碼)...${NC}"
         
-        # 1. 抓取 Market 物件 (更強力的過濾，移除所有 [ 開頭的行)
-        RAW_MARKET=$(sui client object $MARKET_ID --json --dry-run 2>&1 | grep -v "^\[")
-        
-        # 2. 使用遞迴搜尋直接找出 active_orders 的內容
-        # 說明: .. 搜尋所有層級，找出 key 為 active_orders 的物件
-        ACTIVE_ORDERS_DATA=$(echo "$RAW_MARKET" | jq -r '.. | .active_orders? | select(. != null)')
-        
-        # 3. 解析關鍵資訊
-        # LinkedTable 的結構通常在 fields 裡面
-        TABLE_ID=$(echo "$ACTIVE_ORDERS_DATA" | jq -r '.fields.id.id // empty')
-        ORDER_SIZE=$(echo "$ACTIVE_ORDERS_DATA" | jq -r '.fields.size // "0"')
-        
-        echo "--------------------------------"
-        if [ -z "$TABLE_ID" ]; then
-            echo -e "${RED}無法讀取訂單 Table ID。可能原因：${NC}"
-            echo "1. Market ID 錯誤 ($MARKET_ID)"
-            echo "2. CLI 輸出格式改變"
-            echo "原始資料片段: ${ACTIVE_ORDERS_DATA:0:100}..." 
-        else
-            echo -e "掛單總數 (Size): ${GREEN}$ORDER_SIZE${NC}"
-            echo "訂單 Table ID : $TABLE_ID"
-        fi
-        echo "--------------------------------"
+        # 定義清洗函數 (移除顏色代碼和警告)
+        clean_output() {
+            sed 's/\x1b\[[0-9;]*m//g' | grep -v "warning" | grep -v "Client/Server"
+        }
 
-        # 4. 如果有 Table ID 且數量不為 0，才查詢詳細列表
-        if [ -n "$TABLE_ID" ] && [ "$ORDER_SIZE" != "0" ] && [ "$ORDER_SIZE" != "null" ]; then
-            echo -e "${YELLOW}正在查詢詳細訂單列表...${NC}"
-            
-            # 查詢 Dynamic Fields
-            DF_RES=$(sui client dynamic-field $TABLE_ID --json 2>&1 | grep -v "^\[")
-            
-            # 檢查 DF_RES 是否為有效 JSON
-            if [[ ${DF_RES:0:1} != "{" ]]; then
-               echo -e "${RED}查詢失敗，回傳非 JSON 資料。${NC}"
-            else
-               echo "--- 訂單物件 ID 列表 ---"
-               # 解析並顯示
-               echo "$DF_RES" | jq -r '.data[]? | "Order Object ID: \(.objectId) | Name type: \(.name.type)"'
-               
-               echo -e "\n${BLUE}提示：要查看特定訂單內容，請複製 Object ID 使用 'sui client object <ID>' 查詢。${NC}"
-            fi
+        # 1. 獲取 Market 的 active_orders Table ID
+        # ---------------------------------------------------
+        RAW_MARKET=$(sui client object $MARKET_ID --json 2>&1 | clean_output)
+        
+        # 使用遞迴搜尋確保能抓到 active_orders
+        ACTIVE_ORDERS_DATA=$(echo "$RAW_MARKET" | jq -r '.. | .active_orders? | select(. != null)')
+        TABLE_ID=$(echo "$ACTIVE_ORDERS_DATA" | jq -r '.fields.id.id // empty')
+        
+        if [ -z "$TABLE_ID" ]; then
+            echo -e "${RED}❌ 無法讀取 active_orders Table ID。${NC}"
         else
-            echo "目前市場上沒有掛單，或無法讀取列表。"
+            echo "Table ID: $TABLE_ID"
+            
+            # 2. 抓取 Table 中所有 Dynamic Field 的 ID
+            # ---------------------------------------------------
+            DF_RES=$(sui client dynamic-field $TABLE_ID --json 2>&1 | clean_output)
+            
+            # 檢查是否有資料
+            DF_COUNT=$(echo "$DF_RES" | jq -r '.data | length' 2>/dev/null)
+            
+            if [ -z "$DF_COUNT" ] || [ "$DF_COUNT" == "0" ]; then
+                echo -e "${YELLOW}目前市場上沒有掛單。${NC}"
+            else
+                echo -e "${YELLOW}找到 $DF_COUNT 筆訂單，正在解析內容...${NC}"
+                
+                FIELD_IDS=$(echo "$DF_RES" | jq -r '.data[].objectId')
+                
+                # 初始化分類字串
+                STR_BIDS_YES=""
+                STR_ASKS_NO=""
+                COUNT_BIDS=0
+                COUNT_ASKS=0
+
+                # 3. 迴圈讀取每個訂單內容並分類
+                # ---------------------------------------------------
+                for fid in $FIELD_IDS; do
+                    # 讀取 Field Object
+                    OBJ_DATA=$(sui client object $fid --json 2>&1 | clean_output)
+                    
+                    # 抓取深層的 Order 結構
+                    # 路徑: DynamicField -> Node -> Value(Order) -> Fields
+                    ORDER_VAL=$(echo "$OBJ_DATA" | jq -r '.. | .value? | .fields? | .value? | .fields? | select(.maker != null)')
+                    
+                    if [ -z "$ORDER_VAL" ]; then continue; fi
+                    
+                    # 提取欄位
+                    MAKER=$(echo "$ORDER_VAL" | jq -r '.maker')
+                    SIDE=$(echo "$ORDER_VAL" | jq -r '.maker_role')   # 0=Buy, 1=Sell
+                    TOKEN=$(echo "$ORDER_VAL" | jq -r '.token_id')    # 1=YES, 0=NO
+                    M_AMT=$(echo "$ORDER_VAL" | jq -r '.maker_amount')
+                    T_AMT=$(echo "$ORDER_VAL" | jq -r '.taker_amount')
+                    
+                    # === 數值顯示處理 (macOS Bash 相容寫法) ===
+                    # Maker Amount (USDC) -> 轉為整數顯示 (除以 10^9)
+                    M_Len=${#M_AMT}
+                    if [[ $M_Len -gt 9 ]]; then
+                        M_Show="${M_AMT:0:$((M_Len-9))}"
+                    else
+                        M_Show="0.${M_AMT}"
+                    fi
+
+                    # Taker Amount (YES/NO) -> 轉為整數顯示
+                    T_Len=${#T_AMT}
+                    if [[ $T_Len -gt 9 ]]; then
+                        T_Show="${T_AMT:0:$((T_Len-9))}"
+                    else
+                        T_Show="0.${T_AMT}"
+                    fi
+
+                    # 格式化單行輸出
+                    LINE="Maker: ${MAKER:0:6}... | Pay: ${M_Show} USDC -> Get: ${T_Show}"
+
+                    # === 分類邏輯 ===
+                    # 1. Bids YES (買 YES): Side=0 (Buy) AND Token=1 (YES)
+                    if [[ "$SIDE" == "0" && "$TOKEN" == "1" ]]; then
+                        STR_BIDS_YES="${STR_BIDS_YES}${LINE} YES\n"
+                        COUNT_BIDS=$((COUNT_BIDS+1))
+                    
+                    # 2. Asks NO (賣 NO): Side=1 (Sell) AND Token=0 (NO)
+                    elif [[ "$SIDE" == "1" && "$TOKEN" == "0" ]]; then
+                        STR_ASKS_NO="${STR_ASKS_NO}${LINE} USDC (Sell NO)\n"
+                        COUNT_ASKS=$((COUNT_ASKS+1))
+                    fi
+                done
+                
+                # 4. 顯示最終結果
+                # ---------------------------------------------------
+                echo "========================================"
+                echo -e "${GREEN}Bids for YES (買入 YES)${NC}"
+                echo "----------------------------------------"
+                if [ "$COUNT_BIDS" -eq 0 ]; then
+                    echo "無"
+                else
+                    echo -e "$STR_BIDS_YES"
+                fi
+                
+                echo "========================================"
+                echo -e "${RED}Asks for NO (賣出 NO)${NC}"
+                echo "----------------------------------------"
+                if [ "$COUNT_ASKS" -eq 0 ]; then
+                    echo "無"
+                else
+                    echo -e "$STR_ASKS_NO"
+                fi
+                echo "========================================"
+            fi
         fi
         ;;
 
+
     5)
-        echo -e "${GREEN}查詢 Order Book (Bids YES / Asks NO)...${NC}"
+        echo -e "${GREEN}查詢 Order Book (Pure PTB - New BCS)...${NC}"
         
-        # 1. 獲取 Market 的 active_orders Table ID
-        RAW_MARKET=$(sui client object $MARKET_ID --json 2>&1 | grep -v "^\[")
-        ACTIVE_ORDERS_DATA=$(echo "$RAW_MARKET" | jq -r '.. | .active_orders? | select(. != null)')
-        TABLE_ID=$(echo "$ACTIVE_ORDERS_DATA" | jq -r '.fields.id.id // empty')
+        # 確保使用最新版 BCS
+        # npm install @mysten/bcs@latest
+
+        # 定義清洗函數
+        clean_output() {
+            sed 's/\x1b\[[0-9;]*m//g' | grep -v "warning" | grep -v "Client/Server"
+        }
+
+        # 定義查詢函數
+        query_ptb_stdlib() {
+            local FUNC=$1
+            local TOKEN=$2
+            local LABEL=$3
+            
+            echo "--------------------------------------------------"
+            echo -e "正在查詢: $LABEL"
+            
+            RAW_OUT=$(sui client ptb \
+                --move-call "0x1::option::some<u8>" ${TOKEN}u8 \
+                --assign token_opt \
+                --move-call "0x1::option::none<vector<u8>>" \
+                --assign cursor_opt \
+                --move-call "$PACKAGE_ID::market::$FUNC" @$MARKET_ID token_opt cursor_opt 100u64 \
+                --dev-inspect \
+                2>&1 | clean_output)
+
+            if echo "$RAW_OUT" | grep -q "Status: Success"; then
+                # 1. 抓取所有 Bytes 行
+                BYTES_LINES=$(echo "$RAW_OUT" | grep "Bytes:")
+                
+                # 2. 找出最長的那一行 (真實數據)
+                DATA_LINE=$(echo "$BYTES_LINES" | awk 'length($0) > 50')
+                
+                if [ -n "$DATA_LINE" ]; then
+                    echo -e "${GREEN}結果: 有訂單！正在解碼...${NC}"
+                    
+                    # 3. 關鍵修正：提取純 JSON 陣列 string
+                    # 使用 sed 將 "    Bytes: " 替換為空字串
+                    CLEAN_BYTES=$(echo "$DATA_LINE" | sed 's/.*Bytes: //')
+                    
+                    # 4. 呼叫 Node.js 進行解碼
+                    # 確保路徑正確指向 script/decode_order.js
+                    node script/decode_order.js "$CLEAN_BYTES"
+                else
+                    echo -e "${YELLOW}結果: 無訂單 (Empty)${NC}"
+                fi
+            else
+                echo -e "${RED}❌ PTB 執行失敗${NC}"
+                echo "$RAW_OUT" | head -n 20
+            fi
+        }
+
+        # 1. Bids YES (買 YES)
+        query_ptb_stdlib "get_bids" "1" "Bids for YES (買入 YES)"
+
+        # 2. Asks NO (賣 NO)
+        query_ptb_stdlib "get_asks" "0" "Asks for NO  (賣出 NO )"
         
-        if [ -z "$TABLE_ID" ]; then
-            echo -e "${RED}無法讀取 active_orders Table ID。${NC}"
-        else
-            echo "Table ID: $TABLE_ID"
-            echo -e "${YELLOW}正在讀取鏈上訂單資料...${NC}"
-            
-            # 2. 抓取 Table 中所有 Dynamic Field 的 ID
-            DF_RES=$(sui client dynamic-field $TABLE_ID --json 2>&1 | grep -v "^\[")
-            FIELD_IDS=$(echo "$DF_RES" | jq -r '.data[].objectId')
-            
-            # 初始化顯示字串
-            STR_BIDS_YES=""
-            STR_ASKS_NO=""
-            COUNT_BIDS=0
-            COUNT_ASKS=0
-
-            # 3. 迴圈讀取每個訂單內容並分類
-            for fid in $FIELD_IDS; do
-                # 讀取 Field Object
-                OBJ_DATA=$(sui client object $fid --json 2>&1 | grep -v "^\[")
-                
-                # 相容路徑
-                ORDER_VAL=$(echo "$OBJ_DATA" | jq -r '(.data.content // .content).fields.value.fields.value.fields // empty')
-                
-                # 如果解析失敗(例如空值)，跳過
-                if [ -z "$ORDER_VAL" ] || [ "$ORDER_VAL" == "null" ]; then
-                    continue
-                fi
-                
-                MAKER=$(echo "$ORDER_VAL" | jq -r '.maker')
-                SIDE=$(echo "$ORDER_VAL" | jq -r '.maker_role')   # 0=Buy, 1=Sell
-                TOKEN=$(echo "$ORDER_VAL" | jq -r '.token_id')    # 1=YES, 0=NO
-                M_AMT=$(echo "$ORDER_VAL" | jq -r '.maker_amount')
-                T_AMT=$(echo "$ORDER_VAL" | jq -r '.taker_amount')
-                
-                # === 數值顯示處理 (macOS Bash 3.2 相容寫法) ===
-                
-                # Maker Amount (USDC)
-                M_Len=${#M_AMT}
-                if [[ $M_Len -gt 9 ]]; then
-                    # 計算截取長度 = 總長 - 9
-                    Cut_Len=$((M_Len - 9))
-                    M_Display="${M_AMT:0:$Cut_Len}"
-                else
-                    M_Display="$M_AMT (MIST)"
-                fi
-
-                # Taker Amount (YES/NO)
-                T_Len=${#T_AMT}
-                if [[ $T_Len -gt 9 ]]; then
-                    Cut_Len=$((T_Len - 9))
-                    T_Display="${T_AMT:0:$Cut_Len}"
-                else
-                    T_Display="$T_AMT (MIST)"
-                fi
-
-                # --- 邏輯判斷 ---
-                
-                # 1. Bids YES (買 YES): Side=0 (Buy) AND Token=1 (YES)
-                if [[ "$SIDE" == "0" && "$TOKEN" == "1" ]]; then
-                    STR_BIDS_YES="${STR_BIDS_YES}Maker: ${MAKER:0:6}... | Pay: ${M_Display} USDC -> Get: ${T_Display} YES\n"
-                    COUNT_BIDS=$((COUNT_BIDS+1))
-                
-                # 2. Asks NO (賣 NO): Side=1 (Sell) AND Token=0 (NO)
-                elif [[ "$SIDE" == "1" && "$TOKEN" == "0" ]]; then
-                    STR_ASKS_NO="${STR_ASKS_NO}Maker: ${MAKER:0:6}... | Give: ${M_Display} NO -> Want: ${T_Display} USDC\n"
-                    COUNT_ASKS=$((COUNT_ASKS+1))
-                fi
-            done
-            
-            # 4. 顯示結果
-            echo "========================================"
-            echo -e "${GREEN}Bids for YES (買入 YES)${NC}"
-            echo "----------------------------------------"
-            if [ "$COUNT_BIDS" -eq 0 ]; then
-                echo "無"
-            else
-                echo -e "$STR_BIDS_YES"
-            fi
-            
-            echo "========================================"
-            echo -e "${RED}Asks for NO (賣出 NO)${NC}"
-            echo "----------------------------------------"
-            if [ "$COUNT_ASKS" -eq 0 ]; then
-                echo "無"
-            else
-                echo -e "$STR_ASKS_NO"
-            fi
-            echo "========================================"
-        fi
+        echo "--------------------------------------------------"
         ;;
 
     *)
