@@ -15,6 +15,19 @@ echo "run.sh script is running"
 export PYTHONPATH=/lib/python3.11:/usr/local/lib/python3.11/lib-dynload:/usr/local/lib/python3.11/site-packages:/lib
 export LD_LIBRARY_PATH=/lib:$LD_LIBRARY_PATH
 
+# ==== 加這段：設定 CODE_HTTP_PROXY，給你的 Rust runtime 用 ====
+export CODE_HTTP_PROXY="http://proxy.internal:8101"
+
+# 選配：也直接先幫 Python/Node 設好，保險一點
+export HTTP_PROXY="$CODE_HTTP_PROXY"
+export HTTPS_PROXY="$CODE_HTTP_PROXY"
+export http_proxy="$CODE_HTTP_PROXY"
+export https_proxy="$CODE_HTTP_PROXY"
+
+# walrus、proxy.internal 自己這些不要經過 proxy
+export NO_PROXY="aggregator.testnet.walrus.atalma.io,publisher.walrus-01.tududes.com,proxy.internal,127.0.0.1,localhost"
+export no_proxy="$NO_PROXY"
+
 echo "Script completed."
 # Assign an IP address to local loopback
 busybox ip addr add 127.0.0.1/32 dev lo
@@ -25,24 +38,7 @@ echo "127.0.0.1   localhost" > /etc/hosts
 echo "127.0.0.64   proxy.internal" >> /etc/hosts
 echo "127.0.0.65   aggregator.testnet.walrus.atalma.io" >> /etc/hosts
 echo "127.0.0.66   publisher.walrus-01.tududes.com" >> /etc/hosts
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+echo "127.0.0.67   127.0.0.1" >> /etc/hosts
 
 
 
@@ -66,24 +62,7 @@ echo "$JSON_RESPONSE" | jq -r 'to_entries[] | "\(.key)=\(.value)"' > /tmp/kvpair
 python3 /traffic_forwarder.py 127.0.0.64 443 3 8101 &
 python3 /traffic_forwarder.py 127.0.0.65 443 3 8102 &
 python3 /traffic_forwarder.py 127.0.0.66 443 3 8103 &
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+python3 /traffic_forwarder.py 127.0.0.67 443 3 8104 &
 
 
 # Listens on Local VSOCK Port 3000 and forwards to localhost 3000
