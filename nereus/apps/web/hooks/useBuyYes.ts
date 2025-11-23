@@ -41,11 +41,11 @@ export function useBuyYes() {
                 tx,
                 freshUser.USDC,
                 market.address,
-                freshUser.YesPositions, // This might be empty, buyYesTx handles it
-                market.yesprice * ticketAmount, // Buy ticketAmount tokens at current price
+                ticketAmount, // USDC amount to spend
+                market.yesprice, // Current price from market
                 currentAccount.address
             );
-            console.log("Constructer", tx);
+            console.log("Constructed", tx);
             signAndExecuteTransaction(
                 {
                     transaction: tx,
@@ -54,7 +54,6 @@ export function useBuyYes() {
                     onSuccess: (result) => {
                         console.log("Transaction successful", result);
                         alert("Purchase successful!");
-                        // Optionally refresh market data
                         storeStore.getState().queryMarkets();
                         storeStore.getState().fetchUser(currentAccount.address);
                     },

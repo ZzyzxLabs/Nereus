@@ -41,8 +41,8 @@ export function useBuyNo() {
                 tx,
                 freshUser.USDC,
                 market.address,
-                freshUser.NoPositions, // This might be empty, buyNoTx handles it
-                market.noprice * ticketAmount, // Buy ticketAmount tokens at current price
+                ticketAmount, // USDC amount to spend
+                market.noprice, // Current price from market
                 currentAccount.address
             );
 
@@ -54,7 +54,6 @@ export function useBuyNo() {
                     onSuccess: (result) => {
                         console.log("Transaction successful", result);
                         alert("Purchase successful!");
-                        // Optionally refresh market data
                         storeStore.getState().queryMarkets();
                         storeStore.getState().fetchUser(currentAccount.address);
                     },
