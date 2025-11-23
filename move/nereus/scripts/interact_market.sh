@@ -397,8 +397,8 @@ case $OPTION in
                     CLEAN_BYTES=$(echo "$DATA_LINE" | sed 's/.*Bytes: //')
                     
                     # 4. 呼叫 Node.js 進行解碼
-                    # 確保路徑正確指向 script/decode_order.js
-                    node script/decode_order.js "$CLEAN_BYTES"
+                    # 確保路徑正確指向 scripts/decode_order.js
+                    node scripts/decode_order.js "$CLEAN_BYTES"
                 else
                     echo -e "${YELLOW}結果: 無訂單 (Empty)${NC}"
                 fi
