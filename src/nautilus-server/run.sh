@@ -15,10 +15,8 @@ echo "run.sh script is running"
 export PYTHONPATH=/lib/python3.11:/usr/local/lib/python3.11/lib-dynload:/usr/local/lib/python3.11/site-packages:/lib
 export LD_LIBRARY_PATH=/lib:$LD_LIBRARY_PATH
 
-# ==== 加這段：設定 CODE_HTTP_PROXY，給你的 Rust runtime 用 ====
-export CODE_HTTP_PROXY="http://proxy.internal:8101"
+export CODE_HTTP_PROXY="http://proxy.internal:443"
 
-# 選配：也直接先幫 Python/Node 設好，保險一點
 export HTTP_PROXY="$CODE_HTTP_PROXY"
 export HTTPS_PROXY="$CODE_HTTP_PROXY"
 export http_proxy="$CODE_HTTP_PROXY"
