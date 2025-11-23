@@ -34,6 +34,11 @@ if [ -z "$CLEAN_BALANCE" ] || [ "$CLEAN_BALANCE" == "null" ]; then
     exit 1
 fi
 
+# 顯示查詢結果
+
+PARSED_COINS=$(echo "$CLEAN_BALANCE" | jq -r '.. | objects? | select(has("coinObjectId")) | "Object ID: \(.coinObjectId) | Balance: \(.balance)"')
+echo "CLEAN_BALANCE: $PARSED_COINS" 
+
 # 解析 ID 列表
 ID_LIST_STRING=$(echo "$CLEAN_BALANCE" | jq -r '.. | objects? | select(has("coinObjectId")) | .coinObjectId')
 COIN_IDS=($ID_LIST_STRING)
