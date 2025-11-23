@@ -723,9 +723,9 @@ fun test_get_bids_asks_paged_test_1() {
         let o2 = market::create_order(ALICE, 20, 100, SIDE_BUY, ASSET_YES, 0, 2);
         let o3 = market::create_order(ALICE, 30, 100, SIDE_BUY, ASSET_YES, 0, 3);
 
-        market::post_order(&mut market, o1, ctx);
-        market::post_order(&mut market, o2, ctx);
-        market::post_order(&mut market, o3, ctx);
+        market::post_order(&mut market, o1, &clock, ctx);
+        market::post_order(&mut market, o2, &clock, ctx);
+        market::post_order(&mut market, o3, &clock, ctx);
 
         ts::return_shared(market);
     };
@@ -773,7 +773,9 @@ fun test_get_bids_asks_paged_test_1() {
 #[test]
 fun test_get_bids_asks_paged_test_2() {
     let mut scenario = ts::begin(ADMIN);
+    // 1. 這裡已經建立了 clock
     let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
     init_test_environment(&mut scenario);
 
     fund_account(&mut scenario, ALICE, 200_000_000_000);
@@ -785,16 +787,13 @@ fun test_get_bids_asks_paged_test_2() {
         let mut market = ts::take_shared<Market>(&scenario);
         let ctx = ts::ctx(&mut scenario);
 
-        // === 修正 1: 處理 fake_yes (資源不能隨意丟棄) ===
         let fake_yes = market::zero_yes(&mut market, ctx);
-        // 將這個物件轉給 BOB (或銷毀，但這裡轉給 BOB 模擬他持有資產)
         sui::transfer::public_transfer(fake_yes, BOB);
 
         ts::return_shared(market);
     };
 
     // === Step 1: 直接鑄造 (Split) ===
-    // Alice 將 100 USDC 轉換成 100 YES + 100 NO
     ts::next_tx(&mut scenario, ALICE);
     {
         let mut market = ts::take_shared<Market>(&scenario);
@@ -813,14 +812,13 @@ fun test_get_bids_asks_paged_test_2() {
         let mut market = ts::take_shared<Market>(&scenario);
         let ctx = ts::ctx(&mut scenario);
 
-        // 提出來檢查，確認真的有 100 YES 和 100 NO
         market::withdraw_yes(&mut market, 100_000_000_000, ctx);
         market::withdraw_no(&mut market, 100_000_000_000, ctx);
 
         ts::return_shared(market);
     };
 
-    // 檢查 Alice 錢包
+    // 檢查 Alice 錢包並存回 Position
     ts::next_tx(&mut scenario, ALICE);
     {
         let yes_pos = ts::take_from_sender<Yes>(&scenario);
@@ -831,60 +829,40 @@ fun test_get_bids_asks_paged_test_2() {
         assert!(market::yes_balance(&yes_pos) == 100_000_000_000, 1);
         assert!(market::no_balance(&no_pos) == 100_000_000_000, 2);
 
-        // 歸還物件以便下一步測試
-        // 提出來檢查，確認真的有 100 YES 和 100 NO
         market::deposit_yes_position(&mut market, yes_pos, ctx);
         market::deposit_no_position(&mut market, no_pos, ctx);
         ts::return_shared(market);
     };
 
-    // === Step 1: Alice 掛 3 個買單 (YES) ===
+    // === Step 2: Alice 掛買單 (這裡需要傳入 &clock) ===
     ts::next_tx(&mut scenario, ALICE);
     {
         let mut market = ts::take_shared<Market>(&scenario);
         let ctx = ts::ctx(&mut scenario);
 
-        // === 修正 2: 使用 create_order 直接設定 Salt，而不是修改欄位 ===
         // 參數: maker, maker_amount, taker_amount, maker_role, token_id, expiration, salt
         let o1 = market::create_order(ALICE, 10, 100, SIDE_BUY, ASSET_YES, 0, 1);
         let o2 = market::create_order(ALICE, 20, 100, SIDE_BUY, ASSET_YES, 0, 2);
         let o3 = market::create_order(ALICE, 30, 100, SIDE_BUY, ASSET_YES, 0, 3);
 
-        market::post_order(&mut market, o1, ctx);
-        market::post_order(&mut market, o2, ctx);
-        market::post_order(&mut market, o3, ctx);
+        // === 修改處：傳入 &clock ===
+        market::post_order(&mut market, o1, &clock, ctx);
+        market::post_order(&mut market, o2, &clock, ctx);
+        market::post_order(&mut market, o3, &clock, ctx);
 
         let os1 = market::create_order(ALICE, 40, 100, SIDE_SELL, ASSET_NO, 0, 1);
         let os2 = market::create_order(ALICE, 50, 100, SIDE_SELL, ASSET_NO, 0, 2);
         let os3 = market::create_order(ALICE, 60, 100, SIDE_SELL, ASSET_NO, 0, 3);
 
-        market::post_order(&mut market, os1, ctx);
-        market::post_order(&mut market, os2, ctx);
-        market::post_order(&mut market, os3, ctx);
+        // === 修改處：傳入 &clock ===
+        market::post_order(&mut market, os1, &clock, ctx);
+        market::post_order(&mut market, os2, &clock, ctx);
+        market::post_order(&mut market, os3, &clock, ctx);
 
         ts::return_shared(market);
     };
 
-    // === Step 2: Alice 掛 3 個買單 (YES) ===
-    // ts::next_tx(&mut scenario, ALICE);
-    // {
-    //     let mut market = ts::take_shared<Market>(&scenario);
-    //     let ctx = ts::ctx(&mut scenario);
-
-    //     // === 修正 2: 使用 create_order 直接設定 Salt，而不是修改欄位 ===
-    //     // 參數: maker, maker_amount, taker_amount, maker_role, token_id, expiration, salt
-    //     let o1 = market::create_order(ALICE, 10, 100, SIDE_BUY, ASSET_NO, 0, 1);
-    //     let o2 = market::create_order(ALICE, 20, 100, SIDE_BUY, ASSET_NO, 0, 2);
-    //     let o3 = market::create_order(ALICE, 30, 100, SIDE_BUY, ASSET_NO, 0, 3);
-
-    //     market::post_order(&mut market, o1, ctx);
-    //     market::post_order(&mut market, o2, ctx);
-    //     market::post_order(&mut market, o3, ctx);
-
-    //     ts::return_shared(market);
-    // };
-
-    // === Step 3: 測試分頁讀取 (Limit = 2) ===
+    // === Step 3: 測試分頁讀取 ===
     ts::next_tx(&mut scenario, ADMIN);
     {
         let market = ts::take_shared<Market>(&scenario);
@@ -903,9 +881,8 @@ fun test_get_bids_asks_paged_test_2() {
         assert!(vector::length(&bids_page1) == 2, 101);
         assert!(std::option::is_some(&cursor1), 102);
 
-        // 第二頁：從 cursor1 開始，取剩餘的
-        // === 修正 3: 將 cursor2 改為 _cursor2 或 _ 以忽略警告 ===
-        let (bids_page2, cursor2) = market::get_bids(
+        // 第二頁
+        let (bids_page2, _cursor2) = market::get_bids(
             &market,
             std::option::some(ASSET_YES),
             cursor1,
@@ -933,6 +910,161 @@ fun test_get_bids_asks_paged_test_2() {
         ts::return_shared(market);
     };
 
+    // 測試結束，銷毀 clock
+    clock::destroy_for_testing(clock);
+    ts::end(scenario);
+}
+
+#[test]
+fun test_get_bids_asks_paged_test_3() {
+    let mut scenario = ts::begin(ADMIN);
+    // 1. 這裡已經建立了 clock
+    let clock = clock::create_for_testing(ts::ctx(&mut scenario));
+
+    init_test_environment(&mut scenario);
+
+    fund_account(&mut scenario, ALICE, 200_000_000_000);
+    fund_account(&mut scenario, BOB, 200_000_000_000);
+    deposit_to_vault(&mut scenario, ALICE, 100_000_000_000);
+    deposit_to_vault(&mut scenario, BOB, 100_000_000_000);
+
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        let fake_yes = market::zero_yes(&mut market, ctx);
+        sui::transfer::public_transfer(fake_yes, BOB);
+
+        ts::return_shared(market);
+    };
+
+    // === Step 1: 直接鑄造 (Split) ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let usdc = ts::take_from_sender<Coin<USDC>>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+        debug::print(&usdc);
+
+        market::mint_complete_set(&mut market, usdc, 100_000_000_000, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // === 驗證 Step 1 ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        market::withdraw_yes(&mut market, 100_000_000_000, ctx);
+        market::withdraw_no(&mut market, 100_000_000_000, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // 檢查 Alice 錢包並存回 Position
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let yes_pos = ts::take_from_sender<Yes>(&scenario);
+        let no_pos = ts::take_from_sender<No>(&scenario);
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        assert!(market::yes_balance(&yes_pos) == 100_000_000_000, 1);
+        assert!(market::no_balance(&no_pos) == 100_000_000_000, 2);
+
+        market::deposit_yes_position(&mut market, yes_pos, ctx);
+        market::deposit_no_position(&mut market, no_pos, ctx);
+        ts::return_shared(market);
+    };
+
+    // === Step 2: Alice 掛買單 (這裡需要傳入 &clock) ===
+    ts::next_tx(&mut scenario, ALICE);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        // 參數: maker, maker_amount, taker_amount, maker_role, token_id, expiration, salt
+        let o1 = market::create_order(ALICE, 10, 100, SIDE_BUY, ASSET_YES, 0, 1);
+        let o2 = market::create_order(ALICE, 20, 100, SIDE_BUY, ASSET_YES, 0, 2);
+        let o3 = market::create_order(ALICE, 30, 100, SIDE_BUY, ASSET_YES, 0, 3);
+
+        // === 修改處：傳入 &clock ===
+        market::post_order(&mut market, o1, &clock, ctx);
+        market::post_order(&mut market, o2, &clock, ctx);
+        market::post_order(&mut market, o3, &clock, ctx);
+
+        ts::return_shared(market);
+    };
+
+    ts::next_tx(&mut scenario, BOB);
+    {
+        let mut market = ts::take_shared<Market>(&scenario);
+        let ctx = ts::ctx(&mut scenario);
+
+        let os1 = market::create_order(BOB, 90, 100, SIDE_BUY, ASSET_NO, 0, 4);
+        let os2 = market::create_order(BOB, 80, 100, SIDE_BUY, ASSET_NO, 0, 5);
+        let os3 = market::create_order(BOB, 70, 100, SIDE_BUY, ASSET_NO, 0, 6);
+
+        // === 修改處：傳入 &clock ===
+        market::post_order(&mut market, os1, &clock, ctx);
+        market::post_order(&mut market, os2, &clock, ctx);
+        market::post_order(&mut market, os3, &clock, ctx);
+
+        ts::return_shared(market);
+    };
+
+    // === Step 3: 測試分頁讀取 ===
+    ts::next_tx(&mut scenario, ADMIN);
+    {
+        let market = ts::take_shared<Market>(&scenario);
+
+        // 第一頁：取 2 筆 bids
+        let (bids_page1, cursor1) = market::get_bids(
+            &market,
+            std::option::some(ASSET_YES),
+            std::option::none(),
+            2,
+        );
+
+        debug::print(&std::string::utf8(b"Bids Page 1 count (Should be 2/2):"));
+        debug::print(&vector::length(&bids_page1));
+        debug::print(&bids_page1);
+        assert!(vector::length(&bids_page1) == 2, 101);
+        assert!(std::option::is_some(&cursor1), 102);
+
+        // 第二頁
+        let (bids_page2, _cursor2) = market::get_bids(
+            &market,
+            std::option::some(ASSET_YES),
+            cursor1,
+            2,
+        );
+
+        debug::print(&std::string::utf8(b"Bids Page 2 count (Should be 1/2):"));
+        debug::print(&vector::length(&bids_page2));
+        debug::print(&bids_page2);
+        assert!(vector::length(&bids_page2) == 1, 103);
+
+        // 第一頁：取 2 筆 asks
+        let (asks_page1, _no_cursor) = market::get_bids(
+            &market,
+            std::option::some(ASSET_NO),
+            std::option::none(),
+            5,
+        );
+
+        debug::print(&std::string::utf8(b"Bids Page 1 count (Should be 3/5):"));
+        debug::print(&vector::length(&asks_page1));
+        debug::print(&asks_page1);
+        assert!(vector::length(&asks_page1) == 3, 104);
+
+        ts::return_shared(market);
+    };
+
+    // 測試結束，銷毀 clock
     clock::destroy_for_testing(clock);
     ts::end(scenario);
 }

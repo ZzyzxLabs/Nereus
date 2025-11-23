@@ -222,6 +222,7 @@ case $OPTION in
             --move-call $PACKAGE_ID::market::post_order \
                 @$MARKET_ID \
                 order_obj \
+                @0x6 \
             --gas-budget 100000000 \
             --json 2>&1)
 

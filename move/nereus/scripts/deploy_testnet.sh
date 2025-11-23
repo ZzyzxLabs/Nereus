@@ -48,13 +48,16 @@ if [[ $(echo $PUBLISH_RES | jq -r '.effects.status.status') == "failure" ]]; the
 fi
 
 DIGEST=$(echo "$PUBLISH_RES" | jq -r '.digest')
+echo "✅ 發佈成功！交易摘要: $DIGEST"
 
 # 解析 Package ID ＆ TreasuryCap ID
 PACKAGE_ID=$(echo $PUBLISH_RES | jq -r '.objectChanges[] | select(.type == "published") | .packageId')
-USDC_TREASURY_ID=$(echo $PUBLISH_RES | jq -r '.objectChanges[] | select(.objectType | contains("::usdc::TreasuryCapManager")) | .objectId')
+USDC_TREASURY_ID=$(echo "$PUBLISH_RES" | jq -r '.objectChanges[] | select(.objectType and (.objectType | contains("::usdc::TreasuryCapManager"))) | .objectId')
+UPGRADE_CAP_ID=$(echo "$PUBLISH_RES" | jq -r '.objectChanges[] | select(.objectType and (.objectType | contains("::package::UpgradeCap"))) | .objectId')
 
 echo "✅ Package ID: $PACKAGE_ID"
 echo "✅ Treasury Manager ID: $USDC_TREASURY_ID"
+echo "✅ UPGRADE_CAP_ID: $UPGRADE_CAP_ID"
 
 # ==========================================
 # 2 合併創建 Config 與 Truth Oracle Holder (使用單一 PTB)
@@ -143,6 +146,7 @@ fi
 echo -e "${BLUE}=== 儲存設定到 .env ===${NC}"
 cat <<EOT > .env
 PACKAGE_ID=$PACKAGE_ID
+UPGRADE_CAP_ID=$UPGRADE_CAP_ID
 CONFIG_ID=$CONFIG_ID
 ORACLE_ID=$ORACLE_ID
 MARKET_ID=$MARKET_ID
