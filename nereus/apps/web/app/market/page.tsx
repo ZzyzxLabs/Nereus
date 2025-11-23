@@ -13,6 +13,10 @@ import BuyerRankTabs from "@/components/market/buyerRank";
 import { useBuyYes } from "@/hooks/useBuyYes";
 import { useBuyNo } from "@/hooks/useBuyNo";
 import { Navbar } from "@/components/navbar";
+import { Transaction } from "@mysten/sui/transactions";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import { provideLPtx } from "@/store/move/orderbook/addliquidity";
+import { orderCreateTx } from "@/store/move/orderbook/orderCreate";
 function calculatePercentage(value: number, total: number): number {
 	if (total === 0) return 0;
 	return Math.round((value / total) * 100);
@@ -26,22 +30,24 @@ export default function MarketPage() {
 	const { handleBuyNo } = useBuyNo()
 	const searchParams = useSearchParams();
 	const marketId = searchParams.get("id");
-	const { marketList, queryMarkets } = storeStore();
+	const { marketList, queryMarkets,fetchUser,user } = storeStore();
 	React.useEffect(() => {
 		queryMarkets();
 	}, [queryMarkets]);
 	const market = marketList.find((m) => m.address === marketId);
-	
+
 	// ✅ hooks 一定要在條件 return 之前宣告
 	const [amount, setAmount] = React.useState("");
 	const [selectedSide, setSelectedSide] = React.useState<"YES" | "NO" | null>(
 		null,
 	);
-	
+	const currentAccount = useCurrentAccount();
+	const addr = currentAccount?.address;
+
 	if (!market) {
 		return <div className="p-8 text-center">Market not found.</div>;
 	}
-	
+
 	const total = market.yes + market.no;
 	const yesPercentage = calculatePercentage(market.yes, total);
 	const noPercentage = calculatePercentage(market.no, total);
@@ -49,11 +55,16 @@ export default function MarketPage() {
 	const noFee = market.noprice ? Number(market.noprice) / 1e9 : "-";
 	const now = Math.floor(Date.now() / 1000);
 	const isEnded = market.end_time <= now;
-	
 	const handleResolve = () => {
 		console.log("Resolve button pressed for market:", marketId);
 	};
-	
+	const handleAddLiquidity = async () => {
+		fetchUser(addr!)
+		const tx = new Transaction 
+		provideLPtx(tx,user.USDC,market.address,BigInt(1e9)*50n)
+		orderCreateTx(tx,addr!,market.address,BigInt(1e10*5),27.5,1,1,0,Date.now()*Math.random())
+		orderCreateTx(tx,addr!,market.address,BigInt(1e10*5),27.5,1,0,0,Date.now()*Math.random())
+	}
 	// 計算區塊
 	const currentFee =
 	selectedSide === "YES"
@@ -239,6 +250,13 @@ export default function MarketPage() {
 								</div>
 							</>
 						)}
+						<Button
+							className="mt-4 w-full"
+							onClick={handleAddLiquidity}
+							variant="default"
+							>
+							Add Liquidity
+						</Button>						
 						<Button
 							className="mt-4 w-full"
 							onClick={handleResolve}

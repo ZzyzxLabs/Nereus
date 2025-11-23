@@ -10,7 +10,7 @@ export async function getPrices(marketObjectId: string) {
   
   // 1. Build the Move Call
   tx.moveCall({
-    target: `${base}::market::get_prices`,
+    target: `${base}::market::get_market_price`,
     arguments: [tx.object(marketObjectId)],
   });
 

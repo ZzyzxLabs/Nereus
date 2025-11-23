@@ -228,12 +228,12 @@ export function CreateWizard() {
 											console.log('object changes', result.objectChanges);										},
 									},);
 			
-			router.push("/")
-		} catch (error) {
-			console.error("Error creating market:", error);
-		} finally {
-			setSubmitting(false);
-		}
+								} catch (error) {
+									console.error("Error creating market:", error);
+								} finally {
+									setSubmitting(false);
+								}
+			router.push("/main")
 	};
 	return (
 		<div className="w-full flex justify-center">
