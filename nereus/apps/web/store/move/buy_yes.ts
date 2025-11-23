@@ -1,64 +1,77 @@
+
 import { Transaction } from "@mysten/sui/transactions";
-import { market  } from "./package"; // Renamed to avoid conflict with argument
+import { market as PACKAGE_ID } from "./package";
+
+const MODULE_NAME = "market";
+const PRICE_SCALE = 1_000_000_000n; // 1.0 = 10^9
+const ASSET_YES = 1;
+const SIDE_BUY = 0; // 0 = Buy Role
+
+// 計算預期獲得的 YES 份額： MakerAmount (USDC) / Price = Shares
+function calculateShareAmount(usdcAmount: bigint, priceRaw: bigint): bigint {
+    if (priceRaw <= 0n) throw new Error("Price must be greater than 0");
+    // 公式: (USDC * SCALE) / Price
+    return (usdcAmount * PRICE_SCALE) / priceRaw;
+}
 
 export function buyYesTx(
     tx: Transaction,
-    USDC: string[],   // Array of USDC coin object IDs
-    marketId: string, // The Market Object ID
-    yesPositions: string[] | undefined, // Array of existing YES Position IDs
-    amount: bigint,   // The amount of USDC to bet
-    userAddress: string // Required to transfer the new object if we create one
+    usdcCoins: string[],      // 用戶擁有的 USDC Object IDs
+    marketId: string,         // Market Object ID
+    usdcAmount: bigint,       // 用戶想投入的 USDC 金額
+    currentPrice: bigint,     // 當前 YES 價格 (基於 10^9)
+    userAddress: string,      // 用戶地址
+    durationMs: number = 3600000 // 預設訂單有效期 1 小時
 ): Transaction {
     
-    // 1. Handle USDC Payment
-    // We must provide a coin with EXACTLY 'amount' value.
-    if (USDC.length === 0) throw new Error("No USDC coins provided");
+    if (!usdcCoins || usdcCoins.length === 0 || !usdcCoins[0]) throw new Error("No USDC coins provided");
     
-    const primaryCoin = tx.object(USDC[0]);
+    const primaryCoin = tx.object(usdcCoins[0]!);
     
-    // If multiple USDC coins, merge them into the first one to ensure sufficient balance
-    if (USDC.length > 1) {
-        tx.mergeCoins(primaryCoin, USDC.slice(1).map(id => tx.object(id)));
+    if (usdcCoins.length > 1) {
+        tx.mergeCoins(primaryCoin, usdcCoins.slice(1).map(id => tx.object(id!)));
     }
 
-    // Split off the exact amount required for the bet
-    const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amount)]);
+    const [depositCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(usdcAmount)]);
 
-    // 2. Handle YES Position Object
-    // We need a 'Yes' object to add the shares to. 
-    let targetYesPosition;
-    let isNewPosition = false;
 
-    if (yesPositions && yesPositions.length > 0) {
-        // Use the first existing position found
-        targetYesPosition = tx.object(yesPositions[0]);
-    } else {
-        // If no position exists, we must mint a zero_yes ticket first
-        isNewPosition = true;
-        targetYesPosition = tx.moveCall({
-            target: `${market}::zero_yes`,
-            arguments: [tx.object(marketId)],
-        });
-    }
 
-    // 3. Execute the Bet
+
+
     tx.moveCall({
-        target: `${market}::bet_yes`,
+        target: `${PACKAGE_ID}::${MODULE_NAME}::deposit_usdc`,
         arguments: [
-            targetYesPosition,      // &mut Yes
-            tx.object(marketId),    // &mut Market
-            tx.pure.u64(amount),    // amount (u64)
-            paymentCoin,            // Coin<USDC> (exact value)
-            tx.object("0x6")        // &Clock (System Clock)
+            tx.object(marketId),
+            depositCoin
         ]
     });
 
-    // 4. Cleanup
-    // If we created a new Position object, we must transfer it to the user.
-    // If we used an existing one, it remains in their wallet (shared/owned).
-    if (isNewPosition) {
-        tx.transferObjects([targetYesPosition], tx.pure.address(userAddress));
-    }
+    // --- 3. 計算 Taker Amount (Shares) ---
+    const takerShareAmount = calculateShareAmount(usdcAmount, currentPrice);
+    if (takerShareAmount === 0n) throw new Error("Amount too small for current price");
+
+    const expiration = BigInt(Date.now() + durationMs);
+    const salt = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+
+    // --- 4. 建立並發布訂單 (Create & Post Order) ---
+    tx.moveCall({
+        target: `${PACKAGE_ID}::${MODULE_NAME}::post_order`,
+        arguments: [
+            tx.object(marketId),
+            tx.moveCall({
+                target: `${PACKAGE_ID}::${MODULE_NAME}::create_order`,
+                arguments: [
+                    tx.pure.address(userAddress),  // maker
+                    tx.pure.u64(usdcAmount),       // maker_amount (USDC)
+                    tx.pure.u64(takerShareAmount), // taker_amount (Expected Shares)
+                    tx.pure.u8(SIDE_BUY),          // maker_role (0 = BUY)
+                    tx.pure.u8(ASSET_YES),         // token_id (1 = YES)
+                    tx.pure.u64(expiration),       // expiration
+                    tx.pure.u64(salt)              // salt
+                ]
+            })
+        ]
+    });
 
     return tx;
 }

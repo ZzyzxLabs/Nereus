@@ -1,17 +1,14 @@
 import { market } from "../package";
 
-export function provideLPtx(tx,USDC:string[],marketId:string,amount:bigint){
-    const first = USDC[0];
-    if(!first) throw new Error("No USDC coins provided");
-    tx.mergeCoins(tx.object(first),USDC.slice(1).map(id=>tx.object(id)));
-    const [paymentCoin] = tx.splitCoins(tx.object(first),[tx.pure.u64(amount)]);
+// 不再負責 Merge，只負責執行 Move Call
+export function provideLPtx(tx, fundingCoin: any, marketId: string, amount: bigint) {
     tx.moveCall({
         target: `${market}::mint_complete_set`,
-        arguments:[
+        arguments: [
             tx.object(marketId),
-            paymentCoin,
+            fundingCoin, // 直接使用傳入的 Coin Object
             tx.pure.u64(amount),
         ]
-    })
+    });
     return tx;
 }

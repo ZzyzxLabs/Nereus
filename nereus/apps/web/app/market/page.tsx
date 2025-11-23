@@ -17,6 +17,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import { provideLPtx } from "@/store/move/orderbook/addliquidity";
 import { orderCreateTx } from "@/store/move/orderbook/orderCreate";
+import { useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 function calculatePercentage(value: number, total: number): number {
 	if (total === 0) return 0;
 	return Math.round((value / total) * 100);
@@ -25,7 +26,21 @@ function calculatePercentage(value: number, total: number): number {
 const formatDate = (ts: number) => new Date(ts).toLocaleString();
 
 export default function MarketPage() {
-	
+	const client = useSuiClient();
+	const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+		execute: async ({ bytes, signature }) =>
+			await client.executeTransactionBlock({
+				transactionBlock: bytes,
+				signature,
+				options: {
+					// Raw effects are required so the effects can be reported back to the wallet
+					showRawEffects: true,
+					// Select additional data to return
+					showObjectChanges: true,
+				},
+			}),
+	});
+
 	const { handleBuyYes } = useBuyYes()
 	const { handleBuyNo } = useBuyNo()
 	const searchParams = useSearchParams();
@@ -59,11 +74,52 @@ export default function MarketPage() {
 		console.log("Resolve button pressed for market:", marketId);
 	};
 	const handleAddLiquidity = async () => {
-		fetchUser(addr!)
-		const tx = new Transaction 
-		provideLPtx(tx,user.USDC,market.address,BigInt(1e9)*50n)
-		orderCreateTx(tx,addr!,market.address,BigInt(1e10*5),27.5,1,1,0,Date.now()*Math.random())
-		orderCreateTx(tx,addr!,market.address,BigInt(1e10*5),27.5,1,0,0,Date.now()*Math.random())
+		await fetchUser(addr!);
+		const tx = new Transaction();
+		// 1. 取得所有 USDC ID
+		const usdcIds = user.USDC;
+		const primaryCoinId = usdcIds[0];
+		if (!primaryCoinId) throw new Error("No USDC found");
+		// 2. 先將所有零錢合併到第一顆 Coin
+		if (usdcIds.length > 1) {
+			tx.mergeCoins(
+				tx.object(primaryCoinId),
+				usdcIds.slice(1).map(id => tx.object(id))
+			);
+		}
+		// 3. 定義金額
+		const lpAmount = BigInt(1e9) * 50n;
+		const orderAmount1 = BigInt(1e10) * 5n;
+		const orderAmount2 = BigInt(1e10) * 5n;
+		// 4. 從主 Coin 切分出專款專用的 Coin
+		const [coinForLP] = tx.splitCoins(tx.object(primaryCoinId), [tx.pure.u64(lpAmount)]);
+		const [coinForOrder1] = tx.splitCoins(tx.object(primaryCoinId), [tx.pure.u64(orderAmount1)]);
+		const [coinForOrder2] = tx.splitCoins(tx.object(primaryCoinId), [tx.pure.u64(orderAmount2)]);
+		// 5. 呼叫功能函數
+		provideLPtx(tx, coinForLP, market.address, lpAmount);
+		orderCreateTx(
+			tx,
+			addr!,
+			market.address,
+			orderAmount1,
+			27500000000,
+			1, 1, 0,
+			Math.floor((Date.now() * Math.random())),
+			coinForOrder1
+		);
+		orderCreateTx(
+			tx,
+			addr!,
+			market.address,
+			orderAmount2,
+			27500000000,
+			1, 0, 0,
+			Math.floor((Date.now() * Math.random())),
+			coinForOrder2
+		);
+		signAndExecuteTransaction({
+			transaction: tx,
+		});
 	}
 	// 計算區塊
 	const currentFee =

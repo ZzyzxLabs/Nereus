@@ -1,64 +1,67 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { market as PACKAGE_ID } from "./package";
 
+const MODULE_NAME = "market";
+const PRICE_SCALE = 1_000_000_000n;
+const ASSET_NO = 0;
+const SIDE_BUY = 0; 
+
+function calculateShareAmount(usdcAmount: bigint, priceScaled: bigint): bigint {
+    if (priceScaled <= 0n) throw new Error("Price must be greater than 0");
+    return (usdcAmount * PRICE_SCALE) / priceScaled;
+}
+
 export function buyNoTx(
     tx: Transaction,
-    USDC: string[],   // Array of USDC coin object IDs
-    marketId: string, // The Market Object ID
-    noPositions: string[] | undefined, // Array of existing NO Position IDs
-    amount: bigint,   // The amount of USDC to bet
-    userAddress: string // Required to transfer the new object if we create one
+    usdcCoins: string[],
+    marketId: string,
+    usdcAmount: bigint,
+    currentPrice: bigint, 
+    userAddress: string,
+    durationMs: number = 3600000
 ): Transaction {
     
-    // 1. Handle USDC Payment
-    // We must provide a coin with EXACTLY 'amount' value.
-    if (USDC.length === 0) throw new Error("No USDC coins provided");
-    
-    const primaryCoin = tx.object(USDC[0]!);
-    
-    // If multiple USDC coins, merge them into the first one to ensure sufficient balance
-    if (USDC.length > 1) {
-        tx.mergeCoins(primaryCoin, USDC.slice(1).map(id => tx.object(id)));
+    if (usdcCoins.length === 0) throw new Error("No USDC coins provided");
+
+    // 1. Handle Coin
+    const primaryCoin = tx.object(usdcCoins[0]);
+    if (usdcCoins.length > 1) {
+        tx.mergeCoins(primaryCoin, usdcCoins.slice(1).map(id => tx.object(id)));
     }
+    const [depositCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(usdcAmount)]);
 
-    // Split off the exact amount required for the bet
-    const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amount)]);
-
-    // 2. Handle NO Position Object
-    // We need a 'No' object to add the shares to. 
-    let targetNoPosition;
-    let isNewPosition = false;
-
-    if (noPositions && noPositions.length > 0) {
-        // Use the first existing position found
-        targetNoPosition = tx.object(noPositions[0]!);
-    } else {
-        // If no position exists, we must mint a zero_no ticket first
-        isNewPosition = true;
-        targetNoPosition = tx.moveCall({
-            target: `${PACKAGE_ID}::zero_no`,
-            arguments: [tx.object(marketId)],
-        });
-    }
-
-    // 3. Execute the Bet
+    // 2. Deposit USDC
     tx.moveCall({
-        target: `${PACKAGE_ID}::bet_no`,
-        arguments: [
-            targetNoPosition,       // &mut No
-            tx.object(marketId),    // &mut Market
-            tx.pure.u64(amount),    // amount (u64)
-            paymentCoin,            // Coin<USDC> (exact value)
-            tx.object("0x6")        // &Clock (System Clock)
-        ]
+        target: `${PACKAGE_ID}::${MODULE_NAME}::deposit_usdc`,
+        arguments: [tx.object(marketId), depositCoin]
     });
 
-    // 4. Cleanup
-    // If we created a new Position object, we must transfer it to the user.
-    // If we used an existing one, it remains in their wallet (shared/owned).
-    if (isNewPosition) {
-        tx.transferObjects([targetNoPosition], tx.pure.address(userAddress));
-    }
+    // 3. Calculate Shares
+    const takerShareAmount = calculateShareAmount(usdcAmount, currentPrice);
+    if (takerShareAmount === 0n) throw new Error("Amount too small for current price");
+
+    const expiration = BigInt(Date.now() + durationMs);
+    const salt = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+
+    // 4. 建立並發布訂單 (Create & Post Order)
+    tx.moveCall({
+        target: `${PACKAGE_ID}::${MODULE_NAME}::post_order`,
+        arguments: [
+            tx.object(marketId),
+            tx.moveCall({
+                target: `${PACKAGE_ID}::${MODULE_NAME}::create_order`,
+                arguments: [
+                    tx.pure.address(userAddress),
+                    tx.pure.u64(usdcAmount),
+                    tx.pure.u64(takerShareAmount),
+                    tx.pure.u8(SIDE_BUY),
+                    tx.pure.u8(ASSET_NO),
+                    tx.pure.u64(expiration),
+                    tx.pure.u64(salt)
+                ]
+            })
+        ]
+    });
 
     return tx;
 }

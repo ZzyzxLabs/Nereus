@@ -41,6 +41,15 @@ export async function getPrices(marketObjectId: string) {
         }
         return null;
       });
+      
+      // If we got a single u64 (YES price), calculate NO price
+      if (parsedValues.length === 1 && typeof parsedValues[0] === 'bigint') {
+          const yesPrice = parsedValues[0] as bigint;
+          const PRICE_SCALE = 1_000_000_000n;
+          const noPrice = PRICE_SCALE - yesPrice;
+          return [yesPrice, noPrice];
+      }
+
       console.log(parsedValues)
       return parsedValues;
     }
