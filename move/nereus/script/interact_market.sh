@@ -38,20 +38,22 @@ read -p "輸入選項 (1-4): " OPTION
 case $OPTION in
     1)
         echo -e "${GREEN}查詢 USDC Coin...${NC}"
-        echo "目標 Coin Type: 0x2::coin::Coin<${PACKAGE_ID}::usdc::USDC>"
+        echo "目標 Coin Type: ${PACKAGE_ID}::usdc::USDC"
         
-        # 使用 sui client objects 抓取所有物件，並用 jq 過濾出 USDC
-        # 格式: 0x2::coin::Coin<PACKAGE_ID::usdc::USDC>
+        # 1. 執行 balance 指令並儲存 JSON 結果
+        BALANCE_RES=$(sui client balance --coin-type ${PACKAGE_ID}::usdc::USDC --json 2> /dev/null)
         
-        OBJECTS=$(sui client objects --json 2> /dev/null)
-        
-        # 檢查是否有結果，並以易讀格式顯示 ID 和餘額
-        echo "$OBJECTS" | jq -r ".data[] | select(.type | contains(\"::usdc::USDC\")) | \"Object ID: \(.objectId) | Balance: \(.content.fields.balance)\""
-        
-        # 如果沒有找到，顯示提示
-        COUNT=$(echo "$OBJECTS" | jq ".data[] | select(.type | contains(\"::usdc::USDC\"))" | wc -l)
-        if [ "$COUNT" -eq "0" ]; then
+        # 2. 解析並顯示
+        # 說明: '.. | objects?' 會遞迴搜尋所有層級
+        # select(has("coinObjectId")) 會找出包含 coin ID 的物件
+        PARSED_COINS=$(echo "$BALANCE_RES" | jq -r '.. | objects? | select(has("coinObjectId")) | "Object ID: \(.coinObjectId) | Balance: \(.balance)"')
+
+        if [ -z "$PARSED_COINS" ]; then
             echo -e "${RED}❌ 找不到 USDC 物件。請確認您是否已鑄造 USDC，或 Package ID 是否正確。${NC}"
+            # 用於除錯，如果失敗顯示原始 JSON
+            # echo "Debug Raw JSON: $BALANCE_RES" 
+        else
+            echo "$PARSED_COINS"
         fi
         ;;
     2)
