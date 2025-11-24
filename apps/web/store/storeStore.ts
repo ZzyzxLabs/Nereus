@@ -45,10 +45,11 @@ export const storeStore = create<StoreState>((set) => ({
   selectedSide: null,
   user: { USDC: [], YesPositions: [], NoPositions: [] },
 
-  queryOracleSettings: async (oracleID: string) => {
-    const res = await gqlQuery<any>(`
-      query {
-  object(address:"${oracleID}"){
+queryOracleSettings: async (oracleID: string) => {
+  // 第一次查 oracle 物件，拿 config_id
+  const res = await gqlQuery<any>(`
+    query {
+      object(address: "${oracleID}") {
         asMoveObject {
           contents {
             json
@@ -56,12 +57,43 @@ export const storeStore = create<StoreState>((set) => ({
         }
       }
     }
-    `);
-    return res.data?.object?.asMoveObject?.contents?.json?.blob_id;
-  },
+  `);
 
-  queryMarkets: async () => {
-    const res = await gqlQuery<any>(`
+  const configId =
+    res.data?.object?.asMoveObject?.contents?.json?.config_id;
+
+  if (!configId) {
+    throw new Error(`config_id not found for oracle: ${oracleID}`);
+  }
+
+  // 第二次用 config_id 查設定物件，拿 blob_id
+  const blobRes = await gqlQuery<any>(`
+    query {
+      object(address: "${configId}") {
+        previousTransaction {
+          digest
+        }
+        asMoveObject {
+          contents {
+            json
+          }
+        }
+      }
+    }
+  `);
+
+  const blobId =
+    blobRes.data?.object?.asMoveObject?.contents?.json?.blob_id;
+
+  if (!blobId) {
+    throw new Error(`blob_id not found for config: ${configId}`);
+  }
+
+  return blobId;
+},
+
+queryMarkets: async () => {
+  const res = await gqlQuery<any>(`
       {
         objects(filter: { type: "${market}::Market" }) {
           nodes {
@@ -76,67 +108,67 @@ export const storeStore = create<StoreState>((set) => ({
         }
       }
     `);
-    const data = res.data;
-    const nodes = data?.objects.nodes || [];
+  const data = res.data;
+  const nodes = data?.objects.nodes || [];
 
-    // 這裡邏輯很好，使用 Promise.all 並行處理價格查詢效率較高
-    const marketPromises = nodes.map(async (node: any) => {
-      const content = node.asMoveObject.contents.json;
-      const prices = await getPrices(node.address);
+  // 這裡邏輯很好，使用 Promise.all 並行處理價格查詢效率較高
+  const marketPromises = nodes.map(async (node: any) => {
+    const content = node.asMoveObject.contents.json;
+    const prices = await getPrices(node.address);
 
-      // Extract category from topic using regex
-      const regex = /#([a-zA-Z0-9]+)/;
-      const match = content.topic.match(regex);
+    // Extract category from topic using regex
+    const regex = /#([a-zA-Z0-9]+)/;
+    const match = content.topic.match(regex);
 
-      let category = null;
-      let topic = content.topic;
+    let category = null;
+    let topic = content.topic;
 
-      if (match) {
-        category = match[1];
-        topic = content.topic.replace(match[0], "").trim();
-      }
+    if (match) {
+      category = match[1];
+      topic = content.topic.replace(match[0], "").trim();
+    }
 
-      return {
-        address: node.address,
-        balance: parseInt(content.balance),
-        description: content.description,
-        topic: topic,
-        start_time: parseInt(content.start_time),
-        end_time: parseInt(content.end_time),
-        no: parseInt(content.no),
-        yes: parseInt(content.yes),
-        oracle_config: content.oracle_config_id,
-        yesprice: prices ? prices[0] : undefined,
-        noprice: prices ? prices[1] : undefined,
-        category,
-      };
-    });
+    return {
+      address: node.address,
+      balance: parseInt(content.balance),
+      description: content.description,
+      topic: topic,
+      start_time: parseInt(content.start_time),
+      end_time: parseInt(content.end_time),
+      no: parseInt(content.no),
+      yes: parseInt(content.yes),
+      oracle_config: content.oracle_config_id,
+      yesprice: prices ? prices[0] : undefined,
+      noprice: prices ? prices[1] : undefined,
+      category,
+    };
+  });
 
-    const markets = await Promise.all(marketPromises);
-    console.log("marketList (processed)", markets);
+  const markets = await Promise.all(marketPromises);
+  console.log("marketList (processed)", markets);
 
-    set({
-      marketList: markets,
-    });
+  set({
+    marketList: markets,
+  });
 
-    const now = Date.now(); // 取得現在時間 (秒)
+  const now = Date.now(); // 取得現在時間 (秒)
 
-    // 1. 進行中的市場：依照 end_time 由小到大排序 (結束時間近 -> 遠)
-    const activeMarkets = markets
-      .filter((m) => m.end_time > now)
-      .sort((a, b) => a.end_time - b.end_time);
+  // 1. 進行中的市場：依照 end_time 由小到大排序 (結束時間近 -> 遠)
+  const activeMarkets = markets
+    .filter((m) => m.end_time > now)
+    .sort((a, b) => a.end_time - b.end_time);
 
-    // 2. 已結束的市場：依照 end_time 由大到小排序 (剛結束的 -> 很久以前結束的)
-    // 這樣使用者在過期區塊先看到的會是最近剛開獎的，比較符合直覺
-    const expiredMarkets = markets
-      .filter((m) => m.end_time <= now)
-      .sort((a, b) => b.end_time - a.end_time);
+  // 2. 已結束的市場：依照 end_time 由大到小排序 (剛結束的 -> 很久以前結束的)
+  // 這樣使用者在過期區塊先看到的會是最近剛開獎的，比較符合直覺
+  const expiredMarkets = markets
+    .filter((m) => m.end_time <= now)
+    .sort((a, b) => b.end_time - a.end_time);
 
-    // 3. 合併並更新狀態：進行中在前，已結束在後
-    set({
-      marketList: [...activeMarkets, ...expiredMarkets],
-    });
-  },
+  // 3. 合併並更新狀態：進行中在前，已結束在後
+  set({
+    marketList: [...activeMarkets, ...expiredMarkets],
+  });
+},
 
   fetchUser: async (userAddress: string) => {
     const res = await gqlQuery<any>(`
@@ -169,9 +201,9 @@ export const storeStore = create<StoreState>((set) => ({
 
     console.log("User USDC fetched:", usdcIds);
   },
-  fetchRichMan: async (marketAddress: string, side: "Yes" | "No") => {
-    // 1. 抓取物件與擁有者資訊
-    const res = await gqlQuery<any>(`
+    fetchRichMan: async (marketAddress: string, side: "Yes" | "No") => {
+      // 1. 抓取物件與擁有者資訊
+      const res = await gqlQuery<any>(`
       {
         objects(
           filter: {
@@ -196,16 +228,16 @@ export const storeStore = create<StoreState>((set) => ({
       }
     `);
       console.log("fetchRichMan raw data:", res.data);
-    // 2. 過濾出屬於目前 Market 的物件
-    const rawNodes = res.data.objects.edges
-      .map((edge: any) => edge.node)
-      .filter((node: any) => node.asMoveObject.contents.json.market_id === marketAddress);
+      // 2. 過濾出屬於目前 Market 的物件
+      const rawNodes = res.data.objects.edges
+        .map((edge: any) => edge.node)
+        .filter((node: any) => node.asMoveObject.contents.json.market_id === marketAddress);
 
-    if (rawNodes.length === 0) return [];
+      if (rawNodes.length === 0) return [];
 
-    // 3. 抓取時間戳記 (Timestamp)
-    const digests = rawNodes.map((item: any) => `"${item.previousTransaction.digest}"`).join(",");
-    const res2 = await gqlQuery<any>(`
+      // 3. 抓取時間戳記 (Timestamp)
+      const digests = rawNodes.map((item: any) => `"${item.previousTransaction.digest}"`).join(",");
+      const res2 = await gqlQuery<any>(`
       {
         multiGetTransactionEffects(keys:[${digests}]) {
           timestamp
@@ -213,43 +245,43 @@ export const storeStore = create<StoreState>((set) => ({
       }
     `);
 
-    // 4. 結合資料並進行「聚合」(Aggregation)
-    const buyerMap = new Map<string, {
-      address: string;
-      buyAmount: number;
-      lastBuyTime: string;
-      transactionCount: number;
-    }>();
+      // 4. 結合資料並進行「聚合」(Aggregation)
+      const buyerMap = new Map<string, {
+        address: string;
+        buyAmount: number;
+        lastBuyTime: string;
+        transactionCount: number;
+      }>();
 
-    rawNodes.forEach((node: any, index: number) => {
-      const ownerAddr = node.asMoveObject.owner?.address?.address;
-      if (!ownerAddr) return;
-      const amount = Number(node.asMoveObject.contents.json.amount);
-      const timestamp = res2.data.multiGetTransactionEffects[index]?.timestamp || new Date().toISOString();
-      if (buyerMap.has(ownerAddr)) {
-        const existing = buyerMap.get(ownerAddr)!;
-        buyerMap.set(ownerAddr, {
-          ...existing,
-          buyAmount: existing.buyAmount + amount,
-          lastBuyTime: new Date(timestamp) > new Date(existing.lastBuyTime) ? timestamp : existing.lastBuyTime,
-          transactionCount: existing.transactionCount + 1
-        });
-      } else {
-        buyerMap.set(ownerAddr, {
-          address: ownerAddr,
-          buyAmount: amount,
-          lastBuyTime: timestamp,
-          transactionCount: 1
-        });
-      }
-    });
+      rawNodes.forEach((node: any, index: number) => {
+        const ownerAddr = node.asMoveObject.owner?.address?.address;
+        if (!ownerAddr) return;
+        const amount = Number(node.asMoveObject.contents.json.amount);
+        const timestamp = res2.data.multiGetTransactionEffects[index]?.timestamp || new Date().toISOString();
+        if (buyerMap.has(ownerAddr)) {
+          const existing = buyerMap.get(ownerAddr)!;
+          buyerMap.set(ownerAddr, {
+            ...existing,
+            buyAmount: existing.buyAmount + amount,
+            lastBuyTime: new Date(timestamp) > new Date(existing.lastBuyTime) ? timestamp : existing.lastBuyTime,
+            transactionCount: existing.transactionCount + 1
+          });
+        } else {
+          buyerMap.set(ownerAddr, {
+            address: ownerAddr,
+            buyAmount: amount,
+            lastBuyTime: timestamp,
+            transactionCount: 1
+          });
+        }
+      });
 
-    // 5. 轉回陣列並根據持有量排序 (由大到小)
-    return Array.from(buyerMap.values()).sort((a, b) => b.buyAmount - a.buyAmount);
-  },
+      // 5. 轉回陣列並根據持有量排序 (由大到小)
+      return Array.from(buyerMap.values()).sort((a, b) => b.buyAmount - a.buyAmount);
+    },
 
-  setMarketList: (markets: Market[]) => set({ marketList: markets }),
-  setSelectedMarket: (market: Market | null) => set({ selectedMarket: market }),
-  selectTrade: (market, side) =>
-    set({ selectedMarket: market, selectedSide: side }),
+      setMarketList: (markets: Market[]) => set({ marketList: markets }),
+        setSelectedMarket: (market: Market | null) => set({ selectedMarket: market }),
+          selectTrade: (market, side) =>
+            set({ selectedMarket: market, selectedSide: side }),
 }));
